@@ -23,20 +23,29 @@ def test_provider_selection(monkeypatch):
 
 
 class FakeModels:
-    def __init__(self, responses=(), names=()):
+    def __init__(self, responses=(), names=(), probe_fail=()):
         self.responses, self.names, self.calls = list(responses), names, []
+        self.probe_fail, self.probes = set(probe_fail), []
 
     def generate_content(self, *, model, contents, config):
+        if contents == "Reply with: ok":  # the startup probe
+            self.probes.append(model)
+            if model in self.probe_fail:
+                raise ApiError(503)
+            return _text_response("ok")
         self.calls.append({"model": model, "contents": list(contents) if isinstance(contents, list) else contents,
                            "config": config})
-        return self.responses.pop(0)
+        response = self.responses.pop(0)
+        if isinstance(response, Exception):
+            raise response
+        return response
 
     def list(self):
         return [SimpleNamespace(name=f"models/{n}", supported_actions=["generateContent"]) for n in self.names]
 
 
-def _gemini(responses=(), names=(), model=""):
-    fake = FakeModels(responses, names)
+def _gemini(responses=(), names=(), model="", probe_fail=()):
+    fake = FakeModels(responses, names, probe_fail)
     settings = SimpleNamespace(model=model, gemini_api_key="g")
     return GeminiLLM(settings, client=SimpleNamespace(models=fake)), fake
 
@@ -69,6 +78,55 @@ def test_model_auto_pick_uses_preview_when_nothing_stable():
 def test_explicit_model_skips_listing():
     llm, fake = _gemini(model="gemini-custom")
     assert llm.model == "gemini-custom"
+
+
+class ApiError(Exception):
+    def __init__(self, code):
+        super().__init__(f"HTTP {code}")
+        self.code = code
+
+
+def test_failover_to_next_model_and_stick_with_it():
+    names = ["gemini-3.8-flash", "gemini-3.5-flash", "gemini-3.1-flash-lite"]
+    llm, fake = _gemini([ApiError(503), _text_response('{"ok": true}'), _text_response('{"ok": true}')], names=names)
+    assert llm.json(system="s", prompt="p", schema={"type": "object"}) == {"ok": True}
+    assert [c["model"] for c in fake.calls] == ["gemini-3.8-flash", "gemini-3.5-flash"]
+    llm.json(system="s", prompt="p", schema={"type": "object"})
+    assert fake.calls[-1]["model"] == "gemini-3.5-flash"  # the overloaded model isn't retried first
+
+
+def test_retired_model_404_fails_over():
+    llm, fake = _gemini([ApiError(404), _text_response('{"ok": true}')], names=["gemini-2.5-flash", "gemini-3.5-flash"])
+    assert llm.json(system="s", prompt="p", schema={"type": "object"}) == {"ok": True}
+
+
+def test_bad_request_is_not_retried():
+    llm, fake = _gemini([ApiError(400)], names=["gemini-3.8-flash", "gemini-3.5-flash"])
+    with pytest.raises(ApiError):
+        llm.json(system="s", prompt="p", schema={"type": "object"})
+    assert len(fake.calls) == 1
+
+
+def test_all_models_down_raises_llm_error(store):
+    llm, _ = _gemini([ApiError(503), ApiError(503)], names=["gemini-3.8-flash", "gemini-3.5-flash"])
+    with pytest.raises(LLMError):
+        llm.json(system="s", prompt="p", schema={"type": "object"})
+    llm, _ = _gemini([ApiError(503), ApiError(503)], names=["gemini-3.8-flash", "gemini-3.5-flash"])
+    result = promises.ingest_transcript(store, llm, text="Agent: I'll call you back tomorrow.", agent_name="Ravi",
+                                        phone="+919845001009")
+    assert result["engine"] == "offline" and len(result["promises"]) == 1
+
+
+def test_probe_skips_a_model_that_is_down():
+    llm, fake = _gemini(names=["gemini-3.8-flash", "gemini-3.5-flash"], probe_fail={"gemini-3.8-flash"})
+    assert llm.model == "gemini-3.5-flash"
+    assert fake.probes == ["gemini-3.8-flash", "gemini-3.5-flash"]
+    assert llm.candidates[-1] == "gemini-3.8-flash"
+
+
+def test_lite_models_rank_last():
+    llm, _ = _gemini(names=["gemini-3.1-flash-lite", "gemini-3-flash-preview", "gemini-3.5-flash", "gemini-flash-latest"])
+    assert llm.candidates == ["gemini-3.5-flash", "gemini-3-flash-preview", "gemini-flash-latest", "gemini-3.1-flash-lite"]
 
 
 def test_json_uses_structured_output():

@@ -6,7 +6,8 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-# Tests never call the real API: the offline engine stands in for Claude.
+# Tests never call a real model or read the local .env: the offline engine stands in.
+os.environ["TRUSTLOOP_NO_DOTENV"] = "1"
 os.environ["TRUSTLOOP_LLM"] = "offline"
 os.environ.pop("TRUSTLOOP_API_KEY", None)
 

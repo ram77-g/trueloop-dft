@@ -5,6 +5,7 @@ Every caller also has an offline path, used when no key is set or a call fails."
 import json
 import logging
 import re
+import threading
 from typing import Callable
 
 from .config import Settings
@@ -94,43 +95,93 @@ class ClaudeLLM:
 
 class GeminiLLM:
     name = "gemini"
-    DEFAULT_MODEL = "gemini-2.5-flash"
-    _SKIP = ("lite", "image", "tts", "live", "audio", "embedding", "exp", "8b", "vision", "robotics")
+    DEFAULT_MODELS = ("gemini-3.5-flash", "gemini-3-flash-preview", "gemini-3.1-flash-lite")
+    _SKIP = ("image", "tts", "live", "audio", "embedding", "exp", "8b", "vision", "robotics", "omni")
+    # Overloaded, timed out, retired or rate-limited: worth trying the next model.
+    FAILOVER_CODES = {404, 429, 500, 503, 504}
 
     def __init__(self, settings: Settings, client=None):
         from google import genai
         from google.genai import types
 
         self.types = types
-        self.client = client or genai.Client(api_key=settings.gemini_api_key)
-        self._model = settings.model
+        self.client = client or genai.Client(api_key=settings.gemini_api_key,
+                                             http_options=types.HttpOptions(timeout=30_000))
+        self._pinned = settings.model
+        self._candidates: list[str] | None = None
+        self._lock = threading.Lock()
 
     @property
     def model(self) -> str:
-        if not self._model:
-            self._model = self._pick_model()
-        return self._model
+        return self.candidates[0]
 
-    def _pick_model(self) -> str:
-        """Choose the newest Flash model this key can use, preferring stable releases over previews."""
+    @property
+    def candidates(self) -> list[str]:
+        with self._lock:
+            if self._candidates is None:
+                ranked = self._rank_models()
+                ordered = ([self._pinned] if self._pinned else []) + [m for m in ranked if m != self._pinned]
+                self._candidates = self._probe(ordered)
+                log.info("Gemini models, in order of preference: %s", self._candidates)
+            return list(self._candidates)
+
+    def _probe(self, ordered: list[str], limit: int = 6) -> list[str]:
+        """Put the first model that answers a tiny request at the front, so real work doesn't wait on outages."""
+        config = self.types.GenerateContentConfig(max_output_tokens=16)
+        for model in ordered[:limit]:
+            try:
+                self.client.models.generate_content(model=model, contents="Reply with: ok", config=config)
+            except Exception as exc:
+                log.warning("Gemini model %s did not answer the probe (%s)", model, getattr(exc, "code", exc))
+                continue
+            return [model] + [m for m in ordered if m != model]
+        return ordered
+
+    def _demote(self, model: str) -> None:
+        with self._lock:
+            if self._candidates and model in self._candidates:
+                self._candidates = [m for m in self._candidates if m != model] + [model]
+
+    def _promote(self, model: str) -> None:
+        with self._lock:
+            if self._candidates and self._candidates[0] != model:
+                self._candidates = [model] + [m for m in self._candidates if m != model]
+
+    def _rank_models(self) -> list[str]:
+        """Flash models this key can use: newest stable first, then previews, then the lite models."""
         try:
             names = [m.name.removeprefix("models/") for m in self.client.models.list()
                      if "generateContent" in (m.supported_actions or [])]
-        except Exception as exc:  # no network or a bad key: fall back to a known name and let calls report it
-            log.warning("Could not list Gemini models (%s); using %s", exc, self.DEFAULT_MODEL)
-            return self.DEFAULT_MODEL
+        except Exception as exc:  # no network or a bad key: use known names and let calls report it
+            log.warning("Could not list Gemini models (%s); using defaults", exc)
+            return list(self.DEFAULT_MODELS)
         flash = [n for n in names if "flash" in n and not any(s in n for s in self._SKIP)]
 
         def rank(name: str):
             version = re.search(r"gemini-(\d+(?:\.\d+)?)", name)
-            return ("preview" not in name, float(version.group(1)) if version else 0.0, -len(name))
+            return ("lite" not in name, "preview" not in name and "latest" not in name,
+                    float(version.group(1)) if version else 0.0, -len(name))
 
-        chosen = max(flash, key=rank) if flash else self.DEFAULT_MODEL
-        log.info("Using Gemini model %s", chosen)
-        return chosen
+        return sorted(flash, key=rank, reverse=True) or list(self.DEFAULT_MODELS)
 
     def _generate(self, contents, config):
-        response = self.client.models.generate_content(model=self.model, contents=contents, config=config)
+        """Call the preferred model; if it's overloaded, retired or rate-limited, move to the next one."""
+        last_error = None
+        for model in self.candidates:
+            try:
+                response = self.client.models.generate_content(model=model, contents=contents, config=config)
+            except Exception as exc:
+                if getattr(exc, "code", None) not in self.FAILOVER_CODES:
+                    raise
+                log.warning("Gemini model %s unavailable (%s); trying the next one", model, getattr(exc, "code", ""))
+                self._demote(model)
+                last_error = exc
+                continue
+            self._promote(model)
+            return self._check(response)
+        raise LLMError(f"Every Gemini model failed; last error: {last_error}")
+
+    def _check(self, response):
         candidates = getattr(response, "candidates", None) or []
         if not candidates:
             raise LLMError(f"Gemini returned no answer: {getattr(response, 'prompt_feedback', None)}")

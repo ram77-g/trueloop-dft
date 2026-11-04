@@ -5,6 +5,7 @@ Run with:  uvicorn trustloop.app:create_app --factory --host 0.0.0.0 --port 8000
 
 import html
 import logging
+import threading
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -83,6 +84,9 @@ def create_app(settings: Settings | None = None, store: db.Store | None = None) 
     mender.ensure_v1(store)
     db.set_default_store(store)
     llm = get_llm(settings)
+    if llm is not None and hasattr(llm, "candidates"):
+        # Find a Gemini model that's answering now, so the first real request doesn't wait on outages.
+        threading.Thread(target=lambda: llm.candidates, name="gemini-warmup", daemon=True).start()
     mcp = build_mcp()
     mcp_http = mcp.streamable_http_app()
     mcp_sse = mcp.sse_app()
