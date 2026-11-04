@@ -52,7 +52,8 @@
       "routing_condition": "",
       "tools": [
         "record_promise",
-        "record_outcome"
+        "record_outcome",
+        "get_customer_promises"
       ]
     }
   ]

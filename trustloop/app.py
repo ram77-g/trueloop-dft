@@ -237,6 +237,14 @@ def create_app(settings: Settings | None = None, store: db.Store | None = None) 
 
     # --- Mender ---------------------------------------------------------------------------
 
+    @app.put("/api/mender/v1-spec")
+    def replace_v1(spec: dict = Body(...)):
+        """Load the spec Person A imported into Talkdesk (orchestrator.py dump-spec) as v1."""
+        try:
+            return mender.replace_v1(store, spec)
+        except ValueError as exc:
+            raise HTTPException(400, str(exc)) from exc
+
     @app.post("/api/mender/import-runs")
     def import_runs(payload: dict = Body(...)):
         """Person A's exported chats (cases.py export → transcripts_<version>.json)."""

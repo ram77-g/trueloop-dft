@@ -30,6 +30,16 @@ def test_v1_spec_is_person_a_spec(store):
     assert "SPECIALIST Card_Services_Agent_DFT" in v1["prompt"]
 
 
+def test_replace_v1_with_the_imported_spec(captured):
+    spec = mender.current_instructions(captured)["spec"]
+    spec["agents"][0]["instruction"] += "\nExtra line from Person A."
+    v1 = mender.replace_v1(captured, spec)
+    assert v1["version"] == 1 and "Extra line from Person A." in v1["prompt"]
+    assert mender.list_failures(captured) == []
+    with pytest.raises(ValueError):
+        mender.replace_v1(captured, {"agents": []})
+
+
 def test_simulated_v1_traffic_shows_all_five_weaknesses(captured):
     assert {c["failure_type"] for c in mender.clusters(captured)} == set(SEEDED.values())
 

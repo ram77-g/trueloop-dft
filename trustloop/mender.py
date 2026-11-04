@@ -125,6 +125,17 @@ def list_versions(store: Store) -> list[dict]:
     return [_version(r) for r in store.query("SELECT * FROM instructions ORDER BY version DESC")]
 
 
+def replace_v1(store: Store, spec: dict) -> dict:
+    """Make v1 exactly the spec imported into Talkdesk (orchestrator.py dump-spec). Clears Mender's work so far."""
+    if not spec.get("agents") or not any(a.get("role") == "SUPERVISING_AGENT" for a in spec["agents"]):
+        raise ValueError("The spec needs an agents list with a SUPERVISING_AGENT")
+    reset_mender(store)
+    ensure_v1(store)
+    store.execute("UPDATE instructions SET text = ?, at = ?, label = 'v1 (published, from Person A)' WHERE version = 1",
+                  (agentspec.dumps(spec), clock.iso(clock.now(store))))
+    return current_instructions(store)
+
+
 def set_instructions(store: Store, spec: dict, label: str) -> dict:
     version = current_instructions(store)["version"] + 1
     store.execute("INSERT INTO instructions (version, at, label, text) VALUES (?, ?, ?, ?)",
