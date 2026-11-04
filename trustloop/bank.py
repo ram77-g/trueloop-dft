@@ -85,6 +85,17 @@ def seed(store: Store) -> None:
                               (c["customer_id"], at, d["merchant"], d["amount"], d["reason"]))
 
 
+def reset_bank(store: Store) -> dict:
+    """Put every card, decline and bank event back to the seed data. Logs, transcripts, promises and Mender's work
+    stay. Run it between the v1 chats and the v2 rerun: v1's mistakes (a blocked card, a duplicate order) change
+    the data the v2 chats expect."""
+    with store.transaction():
+        for table in ("bank_events", "declines", "cards", "customers"):
+            store.execute(f"DELETE FROM {table}")
+    seed(store)
+    return {"reset": True, "customers": store.query_one("SELECT COUNT(*) AS n FROM customers")["n"]}
+
+
 def _digits(text: str) -> str:
     return re.sub(r"\D", "", text or "")
 

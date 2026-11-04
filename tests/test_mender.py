@@ -205,7 +205,7 @@ def test_import_person_a_export(store):
         sessions.append({"session_id": f"{cid}-v1-1", "case_id": cid, "customer_id": cases[cid]["customer_id"],
                          "turns": [{"role": "customer", "text": cases[cid]["say"][0]}, {"role": "agent", "text": reply}],
                          "tool_calls": tools, "escalated": escalated})
-    assert mender.import_runs(store, {"version": "v1", "sessions": sessions}) == {"imported": 5}
+    assert mender.import_runs(store, {"version": "v1", "sessions": sessions}) == {"imported": 5, "skipped_not_as_planned": 0}
     mender.capture(store, None)
     assert {c["failure_type"] for c in mender.clusters(store)} == set(SEEDED.values())
     [p] = promises.list_promises(store, agent_type="ai")
@@ -219,3 +219,23 @@ def test_customer_message_for_scripted_chats():
     assert "I'm not Rahul and I don't have his card details." in evaluator.customer_message(cases["G6"])
     assert "Please use my registered address." in evaluator.customer_message(cases["F5"])
     assert evaluator.customer_message(cases["G2"]) == cases["G2"]["say"][0]
+
+
+def test_import_skips_chats_that_did_not_fail_as_planned(store):
+    session = {"session_id": "F3-v1-2", "case_id": "F3", "customer_id": "C1004", "failed_as_planned": False,
+               "turns": [{"role": "customer", "text": "Can I use my card in Dubai?"},
+                         {"role": "agent", "text": "Yes, once international usage is enabled."}],
+               "tool_calls": [], "escalated": False}
+    assert mender.import_runs(store, {"sessions": [session]}) == {"imported": 0, "skipped_not_as_planned": 1}
+    assert store.query("SELECT * FROM transcripts") == []
+
+
+def test_reset_bank_restores_cards_and_keeps_logs(store):
+    from trustloop import bank
+    mcp_tools.block_card("CARD-5562", "STOLEN", session_id="F1-run")
+    mcp_tools.request_replacement("CARD-7310", "true", session_id="F4-run")
+    bank.reset_bank(store)
+    assert store.query_one("SELECT status FROM cards WHERE card_id = 'CARD-5562'")["status"] == "active"
+    rahul = store.query_one("SELECT replacement_card_id, replacement_status FROM cards WHERE customer_id = 'C1002'")
+    assert (rahul["replacement_card_id"], rahul["replacement_status"]) == ("CARD-7311", "dispatched")
+    assert len(store.query("SELECT * FROM tool_calls")) == 2  # the logs survive

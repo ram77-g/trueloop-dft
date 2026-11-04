@@ -357,6 +357,11 @@ def create_app(settings: Settings | None = None, store: db.Store | None = None) 
         mender.ensure_v1(store)
         return {"reset": True, "now": clock.iso(clock.now(store))}
 
+    @app.post("/api/demo/reset-bank")
+    def reset_bank():
+        """Cards back to the seed data; logs, promises and Mender's work are kept."""
+        return bank.reset_bank(store)
+
     @app.post("/api/demo/load-samples")
     def load_samples():
         folder = Path(__file__).resolve().parent.parent / "demo" / "transcripts"

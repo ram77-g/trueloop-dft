@@ -542,8 +542,11 @@ def simulate_traffic(store: Store) -> list[dict]:
 
 def import_runs(store: Store, payload: dict) -> dict:
     """Load Person A's exported chats (cases.py export → transcripts_<version>.json) as CardCare traffic."""
-    imported = 0
+    imported = skipped = 0
     for s in payload.get("sessions", []):
+        if s.get("failed_as_planned") is False:  # Person A: only learn from chats whose failure happened as planned
+            skipped += 1
+            continue
         sid = s["session_id"]
         customer = bank.find_customer(store, customer_id=s.get("customer_id") or "")
         customer_id = customer and customer["customer_id"]
@@ -569,7 +572,7 @@ def import_runs(store: Store, payload: dict) -> dict:
                           "VALUES (?,?,?,?,?,?,?)",
                           (clock.iso(clock.now(store)), sid, customer_id, intent, 0, 1, "imported escalation"))
         imported += 1
-    return {"imported": imported}
+    return {"imported": imported, "skipped_not_as_planned": skipped}
 
 
 def reset_mender(store: Store) -> None:
