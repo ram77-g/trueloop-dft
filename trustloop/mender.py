@@ -195,8 +195,8 @@ def _add_failure(store: Store, session_id: str, customer_id, failure_type: str, 
     return store.query_one("SELECT COUNT(*) AS n FROM failures")["n"] > before
 
 
-INTERNAL_NOTE = re.compile(r"please take over|the (user|customer) reported|verified:? (yes|no)|_Agent_DFT|"
-                           r"orchestrator|handoff note|internal note", re.IGNORECASE)
+INTERNAL_NOTE = re.compile(r"please take over|the (user|customer) reported|\bverified:? (yes|no)\b|_Agent_DFT|"
+                           r"\borchestrator\b|handoff note|internal note", re.IGNORECASE)
 
 
 def _diagnose_offline(text: str) -> list[dict]:

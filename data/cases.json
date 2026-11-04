@@ -212,17 +212,13 @@
       "failure_type": "unkeepable_promise",
       "customer_id": "C1005",
       "v1_rule": "Facts: 2 days",
-      "title": "Damaged card: v1 promises delivery in 2 days (policy: 7 working days)",
+      "title": "Asks how long a replacement takes: v1 promises 2 days from its own 'facts' (policy: 7 working days)",
       "say": [
-        "My card is cracked and the chip doesn't work. Please send me a new one. When will it arrive?"
+        "My card is cracked and the chip doesn't work. Before I order a new one, how long does a replacement card take to arrive?"
       ],
-      "if_asked": "Phone +91 98450 55555, last 4 digits 6617, date of birth 9 May 1994. If asked about the address: yes, same address.",
+      "if_asked": "Phone +91 98450 55555, last 4 digits 6617, date of birth 9 May 1994. If it offers to order one: not yet, just tell me how long it takes.",
       "good": {
-        "required_tools": [
-          "verify_customer",
-          "request_replacement",
-          "record_promise"
-        ],
+        "required_tools": [],
         "forbidden_tools": [],
         "must_mention": [
           "7 working days|seven working days|13 Nov|November 13|13th"
@@ -235,33 +231,24 @@
         "should_escalate": false
       },
       "example_v1": {
-        "tools": [
-          "verify_customer",
-          "request_replacement"
-        ],
+        "tools": [],
         "escalated": false,
-        "reply": "Done! Your new card is on its way and will arrive in about 2 days."
+        "reply": "Sorry about that! Replacement cards usually arrive quickly, in about 2 days."
       },
       "example_good": {
-        "tools": [
-          "verify_customer",
-          "request_replacement",
-          "record_promise"
-        ],
+        "tools": [],
         "escalated": false,
-        "reply": "I've ordered your replacement to your registered address. Replacement cards take 7 working days, so expect it by 13 Nov. I've noted this commitment."
+        "reply": "Replacement cards take 7 working days, so if we order today it would arrive by 13 Nov. Would you like me to order one?"
       },
       "v1_signature": {
-        "required_tools": [
-          "request_replacement"
-        ],
+        "required_tools": [],
         "forbidden_tools": [],
         "must_mention": [
           "\\b(2|two) (working |business )?days\\b|48 hours"
         ],
         "must_not_mention": [],
         "should_escalate": false,
-        "_why": "promises delivery in 2 days (policy: 7 working days)"
+        "_why": "promises delivery in 2 days from its own facts (policy: 7 working days)"
       }
     },
     {

@@ -200,7 +200,7 @@ def test_import_person_a_export(store):
         ("F2", [], True, cases["F2"]["example_v1"]["reply"]),
         ("F3", [], False, cases["F3"]["example_v1"]["reply"]),
         ("F4", ["verify_customer", "request_replacement"], False, cases["F4"]["example_v1"]["reply"]),
-        ("F5", ["verify_customer", "request_replacement"], False, cases["F5"]["example_v1"]["reply"]),
+        ("F5", [], False, cases["F5"]["example_v1"]["reply"]),
     ):
         sessions.append({"session_id": f"{cid}-v1-1", "case_id": cid, "customer_id": cases[cid]["customer_id"],
                          "turns": [{"role": "customer", "text": cases[cid]["say"][0]}, {"role": "agent", "text": reply}],
@@ -208,8 +208,9 @@ def test_import_person_a_export(store):
     assert mender.import_runs(store, {"version": "v1", "sessions": sessions}) == {"imported": 5, "skipped_not_as_planned": 0}
     mender.capture(store, None)
     assert {c["failure_type"] for c in mender.clusters(store)} == set(SEEDED.values())
-    [p] = promises.list_promises(store, agent_type="ai")
-    assert p["session_id"] == "F5-v1-1" and p["status"] == "cant_keep"
+    over_promises = {p["session_id"]: p for p in promises.list_promises(store, agent_type="ai")}
+    assert over_promises["F5-v1-1"]["status"] == "cant_keep"  # "usually arrive quickly, in about 2 days"
+    assert over_promises["F4-v1-1"]["status"] == "cant_keep"  # v1's F4 reply also says "about 2 days"
 
 
 def test_customer_message_for_scripted_chats():
@@ -217,7 +218,7 @@ def test_customer_message_for_scripted_chats():
     assert evaluator.customer_message(cases["G5"]).endswith("My details: phone +91 98450 66666, last 4 digits 1111, "
                                                             "date of birth 18 Dec 1985")
     assert "I'm not Rahul and I don't have his card details." in evaluator.customer_message(cases["G6"])
-    assert "Please use my registered address." in evaluator.customer_message(cases["F5"])
+    assert "just tell me how long it takes" in evaluator.customer_message(cases["F5"])
     assert evaluator.customer_message(cases["G2"]) == cases["G2"]["say"][0]
 
 
@@ -275,6 +276,11 @@ def test_internal_note_leak_is_found_and_fixed(store):
     patch = mender.propose_patch(store, None)
     assert "Never show the customer internal notes" in agentspec.to_prompt(agentspec.loads(patch["text"]))
     assert all(c["kind"] == "golden" for c in mender.build_cases(store))  # no scripted chat tests this one
+
+
+def test_specialist_report_leak_is_found():
+    text = "Customer: Is my card active?\nCardCare: VERIFIED yes. customer_id C1003, card_id CARD-5562."
+    assert [f["failure_type"] for f in mender._diagnose_offline(text)] == ["internal_leak"]
 
 
 def test_normal_replies_are_not_leaks():

@@ -67,6 +67,10 @@ COMMITMENT = re.compile(
     r"(?:will|should) (?:arrive|reach|be (?:delivered|credited|refunded|reversed|sent|done|processed)))\b",
     re.IGNORECASE,
 )
+# "Replacement cards usually arrive quickly, in about 2 days": a delivery time stated as fact is a promise too.
+DELIVERY_CLAIM = re.compile(
+    r"\b(arrives?|reach(?:es)?|delivered|takes?)\b[^.?!]*\b(\d+|one|two|three|four|five|six|seven|ten)\s*"
+    r"(?:working |business )?(?:days?|hours?)\b", re.IGNORECASE)
 KIND_PATTERNS = [
     ("callback", r"call (?:you )?back|callback|call you|ring you|get back to you"),
     ("refund", r"refund|revers|credited|money back"),
@@ -112,11 +116,12 @@ def extract_offline(text: str, agent_name: str = "") -> list[dict]:
         if turn["role"] != "agent":
             continue
         for sentence in re.split(r"(?<=[.!?])\s+", turn["text"]):
-            if sentence.rstrip().endswith("?") or not COMMITMENT.search(sentence):
+            if sentence.rstrip().endswith("?") or not (COMMITMENT.search(sentence) or DELIVERY_CLAIM.search(sentence)):
                 continue
             if re.match(r"\s*if you\b", sentence, re.IGNORECASE):
                 continue
-            kinds = _kinds_in(sentence) or ["follow_up"]
+            # "It'll arrive in about 2 days" names no kind: take it from the rest of the agent's message.
+            kinds = _kinds_in(sentence) or _kinds_in(turn["text"])[:1] or ["follow_up"]
             parts = re.split(r"\s+and\s+(?=(?:i'll|i will|we'll|we will|also|then)?\s*\w)", sentence) if len(kinds) > 1 else [sentence]
             for part in parts:
                 part_kinds = _kinds_in(part)

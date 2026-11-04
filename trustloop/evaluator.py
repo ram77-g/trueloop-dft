@@ -209,6 +209,11 @@ class SimulatedAgent:
                 r = status.get("replacement") or {}
                 said.append(f"Your replacement card {r.get('card_id', '')} has been {r.get('status', 'ordered')} "
                             f"and is on its way. Expected delivery: {r.get('eta', 'soon')}.")
+        elif re.search(r"how long|how many days", lower):
+            eta = bank.add_working_days(clock.now(db.get_store()), 7)
+            said.append("Sorry about that! Replacement cards usually arrive quickly, in about 2 days." if self.eta_days == 2
+                        else f"Replacement cards take 7 working days, so if we order today it would arrive by "
+                             f"{eta:%d %b}. Would you like me to order one?")
         elif re.search(r"damaged|cracked|send me a new|new one|replacement", lower):
             v = verify()
             result = call("request_replacement", card_id=v.get("card_id", ""), address_confirmed="true")
