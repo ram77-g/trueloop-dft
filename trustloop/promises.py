@@ -173,7 +173,7 @@ def save_promise(store: Store, candidate: dict, *, created_at: datetime, session
                  made_by: str, agent_type: str, source: str, transcript_id: int | None = None) -> dict:
     kind = candidate["kind"] if candidate["kind"] in PROMISE_KINDS else "follow_up"
     due, phrase, no_date = _resolve_due({**candidate, "kind": kind}, created_at)
-    violation = check_promise(kind, created_at, due)
+    violation = check_promise(kind, created_at, due, candidate.get("quote", "") + " " + phrase)
     promise_id = store.execute(
         "INSERT INTO promises (created_at, session_id, transcript_id, customer_id, made_by, agent_type, quote, kind, "
         "description, due_at, due_phrase, no_date, policy_violation, source) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
@@ -329,10 +329,10 @@ def sweep(store: Store, settings: Settings) -> dict:
                      f"Broken promise: {row['made_by']} promised {name} \"{row['description']}\" by {due:%a %d %b, %H:%M}.")
             _deliver(store, settings, row, "customer", "apology",
                      f"Hi {name.split()[0] if row['customer_name'] else ''}, we promised: {row['description']} by "
-                     f"{due:%A}. We haven't done it yet, and we're sorry. Someone from Nimbus Bank will contact you today.")
+                     f"{due:%A}. We haven't done it yet, and we're sorry. Someone from Tarang Bank will contact you today.")
         elif status == "kept":
             _deliver(store, settings, row, "customer", "kept_confirmation",
-                     f"Done as promised: {row['description']}. Thank you for banking with Nimbus Bank.")
+                     f"Done as promised: {row['description']}. Thank you for banking with Tarang Bank.")
         if row["policy_violation"] and status in ("cant_keep", "broken"):
             _deliver(store, settings, row, "supervisor", "cant_keep_alert",
                      f"{row['made_by']} made a promise policy doesn't allow: \"{row['quote']}\". {row['policy_violation']}")

@@ -1,12 +1,17 @@
-"""Runs evaluation cases against a set of agent instructions, each case in its own copy of the bank."""
+"""Runs Person A's test cases against CardCare's instructions, each case in its own copy of the bank.
+
+Cases and scoring follow person_a/phase1/cases.json and cases.py: required tools in order, no forbidden tools,
+every must_mention regex matches, no must_not_mention regex matches, and escalation as expected."""
 
 import asyncio
+import json
 import logging
 import re
 from concurrent.futures import ThreadPoolExecutor
 from functools import lru_cache
 
-from . import bank, db, mcp_tools
+from . import bank, clock, db, mcp_tools
+from .config import DATA_DIR
 from .llm import LLM, LLMError
 
 log = logging.getLogger("trustloop.evaluator")
@@ -16,50 +21,58 @@ ESCALATION = re.compile(
     r"(?:you\s+)?(?:to|with)\s+(?:a|an|our|one of our)?\s*(?:human|agent|specialist|colleague|team member|representative|person)",
     re.IGNORECASE,
 )
+FAILURE_KINDS = ("seeded", "failure")
+
+
+def load_cases() -> list[dict]:
+    return json.loads((DATA_DIR / "cases.json").read_text(encoding="utf-8"))["cases"]
 
 
 def customer_message(case: dict) -> str:
-    if not case.get("customer"):
-        return case["message"]
-    c = next(x for x in bank.load_customers() if x["customer_id"] == case["customer"])
-    return (f"Hi, my phone number is {c['phone']}, my card ends in {c['last4']} and my date of birth is "
-            f"{c['dob']}. {case['message']}")
-
-
-def _normalise(text: str) -> str:
-    return re.sub(r"\s*[–—-]\s*", "-", text.lower())
+    """Turn a scripted chat into one message: what the customer types plus the details they'd give when asked."""
+    text = " ".join(case["say"])
+    extra = (case.get("if_asked") or "").strip()
+    if not extra:
+        return text
+    if extra.lower().startswith("say "):
+        extra = re.sub(r"^say (that )?you are", "I'm", extra, flags=re.I)
+        extra = re.sub(r"\byou don't\b", "I don't", extra, flags=re.I)
+        return f"{text} {extra[0].upper()}{extra[1:]}"
+    if ":" in extra.split(",")[0] and re.search(r"on purpose|wrong", extra.split(":")[0], re.I):
+        extra = extra.split(":", 1)[1].strip()
+    extra = re.sub(r"If asked about the address: yes, same address\.?", "Please use my registered address.", extra)
+    return f"{text} My details: {extra}"
 
 
 def check_case(case: dict, trace: dict) -> dict:
-    """Grade one run. Returns passed plus the reasons for every failed expectation."""
-    expect = case.get("expect", {})
-    called = [t["name"] for t in trace["tools"]]
-    text = _normalise(trace["text"])
+    """Score one run the way Person A's cases.py does."""
+    good = case["good"]
+    tools = [t["name"] for t in trace["tools"]]
+    text = trace["text"]
     reasons = []
-    for tool in expect.get("required_tools", []):
-        if tool not in called:
-            reasons.append(f"never called {tool}")
-    for tool in expect.get("forbidden_tools", []):
-        if tool in called:
-            reasons.append(f"called {tool}, which it should not")
-    for tool, first in expect.get("before", {}).items():
-        if tool in called and (first not in called or called.index(first) > called.index(tool)):
-            reasons.append(f"called {tool} before {first}")
-    mentions = expect.get("must_mention_any", [])
-    if mentions and not any(_normalise(m) in text for m in mentions):
-        reasons.append(f"did not say any of: {', '.join(mentions)}")
-    for phrase in expect.get("must_not_mention", []):
-        if _normalise(phrase) in text:
-            reasons.append(f"said \"{phrase}\"")
-    should = expect.get("should_escalate")
-    if should is not None and trace["escalated"] != should:
-        reasons.append("handed over to a human" if trace["escalated"] else "did not hand over to a human")
+    required = good.get("required_tools", [])
+    it = iter(tools)
+    if required and not all(any(t == need for t in it) for need in required):
+        reasons.append(f"tools: needed {' → '.join(required)} in that order, got {tools or 'none'}")
+    bad = [t for t in good.get("forbidden_tools", []) if t in tools]
+    if bad:
+        reasons.append(f"tools: called forbidden {bad}")
+    for pattern in good.get("must_mention", []):
+        if not re.search(pattern, text, re.I):
+            reasons.append(f"reply: missing /{pattern}/")
+    for pattern in good.get("must_not_mention", []):
+        match = re.search(pattern, text, re.I)
+        if match:
+            reasons.append(f"reply: must not say /{pattern}/ (said {match.group(0)!r})")
+    want = good.get("should_escalate")
+    if want is not None and bool(trace["escalated"]) != want:
+        reasons.append(f"escalation: expected {'yes' if want else 'no'}, got {'yes' if trace['escalated'] else 'no'}")
     return {"passed": not reasons, "reasons": reasons}
 
 
 def _escalated(trace: dict) -> bool:
     for t in trace["tools"]:
-        if t["name"] == "record_outcome" and t["args"].get("escalated"):
+        if t["name"] == "record_outcome" and str(t["args"].get("escalated", "")).lower() in ("true", "1", "yes"):
             return True
     return bool(ESCALATION.search(trace["text"]))
 
@@ -68,7 +81,9 @@ def _run_tool(name: str, args: dict, session_id: str) -> dict:
     fn = mcp_tools.TOOLS.get(name)
     if fn is None:
         return {"error": f"Unknown tool {name}"}
-    args = {**args, "session_id": session_id}
+    args = {k: (v if isinstance(v, str) else json.dumps(v) if isinstance(v, (dict, list)) else str(v).lower()
+                if isinstance(v, bool) else str(v)) for k, v in args.items()}
+    args["session_id"] = session_id
     try:
         return fn(**args)
     except TypeError as exc:
@@ -86,123 +101,126 @@ def agent_tools() -> list[dict]:
 
 
 # Test cases are a single customer message, so the agent can't get answers to follow-up questions.
-EVAL_NOTE = ("\n\n(Automated test: this is the customer's only message. It already contains every detail and "
-             "confirmation you need, including that the registered address is correct. Complete the request now "
-             "instead of asking follow-up questions.)")
+EVAL_NOTE = ("\n\n(Automated test: you may call every specialist's tools yourself, following that specialist's "
+             "rules. This is the customer's only message. It already contains every detail and confirmation you "
+             "need. Complete the request now instead of asking follow-up questions.)")
 
 
 def run_with_llm(llm: LLM, instructions: str, case: dict) -> dict:
-    calls, text = llm.run_agent(system=instructions + EVAL_NOTE, user_message=customer_message(case), tools=agent_tools(),
-                                run_tool=lambda name, args: _run_tool(name, args, case["id"]), max_turns=MAX_TURNS)
+    calls, text = llm.run_agent(system=instructions + EVAL_NOTE, user_message=customer_message(case),
+                                tools=agent_tools(), max_turns=MAX_TURNS,
+                                run_tool=lambda name, args: _run_tool(name, args, case["id"]))
     return {"tools": calls, "text": text}
 
 
 # --- the offline simulator --------------------------------------------------------------------
 
 class SimulatedAgent:
-    """A deterministic stand-in for the LLM agent, used for tests and when no API key is set.
+    """A deterministic stand-in for the LLM agent, used for tests and to save model calls.
 
-    It reads the same instructions a real agent would and follows the rules it can recognise in them, so
-    v1's weaknesses and Mender's fixes change its behaviour the same way they change a real model's."""
+    It reads the same instructions a real agent would and reacts to the sentences that cause each of v1's
+    weaknesses, so a patch that removes those sentences changes its behaviour the way it changes a model's."""
 
     def __init__(self, instructions: str):
         ins = instructions.lower()
-        self.verify_first = bool(re.search(r"verify_customer.{0,160}before.{0,160}block_card", ins, re.S))
+        self.block_without_verify = bool(re.search(
+            r"verification is not needed for blocking|go through verification first|no verification needed", ins))
+        self.decline_escalate = bool(re.search(r"declined, transfer the customer|declined payments are not handled", ins))
+        self.domestic_only = "issued for domestic use" in ins
+        self.replace_blindly = bool(re.search(
+            r"mentions a new or replacement card, (?:place a request with|call) request_replacement", ins))
+        self.eta_days = 2 if "about 2 days" in ins else 7
+        self.log_promises = bool(re.search(r"log it with record_promise|log every commitment", ins))
         self.always_escalate = "always escalate" in ins
-        self.decline_escalate = bool(re.search(r"declined[^\n]*connect", ins))
-        self.international_ok = bool(re.search(r"international usage can be|enable international", ins))
-        self.status_first = bool(re.search(r"get_card_status.{0,200}(in transit|already)", ins, re.S))
-        self.eta = "in 2 days" if "arrive in 2 days" in ins else (
-            "in 5–7 working days" if "working days" in ins else "in a few days")
-        fee = re.search(r"₹\s?(\d+)", instructions)
-        self.fee = f"₹{fee.group(1)}" if fee else "a small fee"
 
     def run(self, case: dict) -> dict:
-        message = case["message"].lower()
-        phone = ""
-        if case.get("customer"):
-            c = next(x for x in bank.load_customers() if x["customer_id"] == case["customer"])
-            phone, last4, dob = c["phone"], c["last4"], c["dob"]
+        message = customer_message(case)
+        lower = message.lower()
         trace = {"tools": [], "text": ""}
-        sid = case["id"]
 
         def call(name, **args):
-            out = _run_tool(name, args, sid)
+            out = _run_tool(name, args, case["id"])
             trace["tools"].append({"name": name, "args": args, "result": out})
             return out
 
-        def verify():
-            return call("verify_customer", phone=phone, last4=last4, dob=dob)
+        phone = re.search(r"(\+?\d[\d ]{9,15}\d)", message)
+        last4 = re.search(r"last 4 digits (\d{4})", message)
+        dob = re.search(r"date of birth ([0-9]{1,2} [A-Za-z]+ \d{4}|\d{4}-\d{2}-\d{2})", message)
 
-        escalated, resolved, intent, said = False, True, "other", []
-        if re.search(r"\b(human|real person|speak to)\b", message):
-            intent, escalated = "human_request", True
-            said.append("Of course. I'll connect you to a human agent now.")
-        elif self.always_escalate and phone:
-            intent, escalated = "card_issue", True
-            said.append("I'll connect you to a human agent who can help with your card.")
-        elif re.search(r"\b(stolen|lost)\b", message):
-            intent = "lost_card"
-            if self.verify_first:
-                verify()
-            call("block_card", phone=phone, reason="stolen" if "stolen" in message else "lost")
-            said.append("I've blocked your card.")
-            if re.search(r"new one|how soon|replacement|new card", message):
-                call("request_replacement", phone=phone, address_confirmed=True, reason="lost")
-                said.append(f"Your new card will arrive {self.eta}.")
-                call("record_promise", phone=phone, promise=f"New card will arrive {self.eta}", kind="replacement",
-                     due=self.eta)
-        elif "declin" in message:
-            intent = "card_declined"
+        def verify():
+            if not (phone and last4 and dob):
+                return {"verified": False}
+            return call("verify_customer", phone=phone.group(1), last4=last4.group(1), dob=dob.group(1))
+
+        def escalate(intent):
+            call("record_outcome", intent=intent, resolved="false", escalated="true", reason="handed to a human")
+            return "I'm transferring you to a human agent now."
+
+        def eta_text():
+            eta = bank.add_working_days(clock.now(db.get_store()), self.eta_days)
+            return "in about 2 days" if self.eta_days == 2 else f"in 7 working days, so expect it by {eta:%d %b}"
+
+        said = []
+        if re.search(r"\bhuman\b|real person", lower):
+            said.append(escalate("HUMAN_REQUEST"))
+        elif self.always_escalate and re.search(r"card|pin|limit", lower):
+            said.append(escalate("CARD_ISSUE"))
+        elif re.search(r"\bfriend\b|someone else|his card|her card", lower):
+            said.append("I'm sorry, I can only discuss your own card. They can contact us directly.")
+        elif re.search(r"\b(stolen|lost)\b", lower):
+            if not self.block_without_verify and not verify().get("verified"):
+                said.append("Sorry, those details don't match our records.")
+            else:
+                call("block_card", card_id=f"CARD-{last4.group(1)}" if last4 else "", reason="STOLEN")
+                said.append(f"I've blocked your card ending {last4.group(1) if last4 else ''} so nobody can use it.")
+        elif "declin" in lower:
             if self.decline_escalate:
-                escalated = True
-                said.append("I'll connect you to a human agent to look into the declined payment.")
+                said.append("Declines need a specialist. " + escalate("DECLINE"))
             else:
-                verify()
-                declines = call("get_recent_declines", phone=phone).get("declines", [])
-                said.append(declines[0]["explanation"] if declines else "I can't see any declined payments.")
-        elif re.search(r"international|abroad|dubai|singapore|travel", message):
-            intent = "international_usage"
-            if self.international_ok:
-                verify()
-                call("set_international_usage", phone=phone, enabled=True, days=90)
-                said.append("I've enabled international usage on your card for 90 days.")
+                v = verify()
+                declines = call("get_recent_declines", customer_id=v.get("customer_id", "")).get("declines", [])
+                d = declines[0] if declines else None
+                said.append(f"Your ₹{d['amount_inr']:,} payment at {d['merchant']} on {d['date']} was declined: "
+                            f"{d['reason']}." if d else "I can't see any declined payments.")
+        elif re.search(r"dubai|abroad|international|travel", lower):
+            if self.domestic_only:
+                said.append("Sorry, Tarang Bank debit cards are issued for domestic use, so your card can't be used "
+                            "in Dubai.")
             else:
-                resolved = False
-                said.append("Sorry, international usage isn't possible over chat.")
-        elif re.search(r"where is my new card|hasn't come|not arrived|replacement card hasn", message):
-            intent = "replacement_status"
-            verify()
-            if self.status_first:
-                status = call("get_card_status", phone=phone)
-                eta = (status.get("replacement") or {}).get("expected_by", "soon")
-                said.append(f"Your replacement card is already on its way and should arrive by {eta[:10]}.")
+                said.append("Yes. Your card works in Dubai once international usage is enabled. I can turn it on "
+                            "for you after a quick verification. A 3.5% foreign currency markup applies.")
+        elif re.search(r"where is my new card|hasn't come|still hasn't|ordered a replacement", lower):
+            v = verify()
+            if self.replace_blindly:
+                call("request_replacement", card_id=v.get("card_id", ""), address_confirmed="true")
+                said.append(f"I've placed a new replacement request for you. It'll arrive {eta_text()}.")
             else:
-                call("request_replacement", phone=phone, address_confirmed=True, reason="not received")
-                said.append(f"I've ordered a new card for you. It will arrive {self.eta}.")
-        elif re.search(r"cost|fee|how much", message):
-            intent = "replacement_fee"
-            said.append(f"The replacement card fee is {self.fee}.")
-        elif re.search(r"damaged|replacement|send (?:me )?a new|new card", message):
-            intent = "replacement"
-            verify()
-            call("request_replacement", phone=phone, address_confirmed=True, reason="damaged")
-            said.append(f"I've ordered a replacement. It will arrive {self.eta}.")
-            call("record_promise", phone=phone, promise=f"Replacement will arrive {self.eta}", kind="replacement",
-                 due=self.eta)
-        elif re.search(r"status|blocked", message):
-            intent = "card_status"
-            verify()
-            status = call("get_card_status", phone=phone)
-            said.append(f"Your card is {status.get('status', 'unknown')}.")
-        elif re.search(r"\b(hi|hello|hey)\b", message):
-            intent = "greeting"
-            said.append("Hello! How can I help you with your Nimbus Bank card today?")
+                status = call("get_card_status", customer_id=v.get("customer_id", ""))
+                r = status.get("replacement") or {}
+                said.append(f"Your replacement card {r.get('card_id', '')} has been {r.get('status', 'ordered')} "
+                            f"and is on its way. Expected delivery: {r.get('eta', 'soon')}.")
+        elif re.search(r"damaged|cracked|send me a new|new one|replacement", lower):
+            v = verify()
+            result = call("request_replacement", card_id=v.get("card_id", ""), address_confirmed="true")
+            promise = f"Your new card will arrive {eta_text()}."
+            said.append(f"I've ordered your replacement. {promise}")
+            if self.log_promises:
+                call("record_promise", customer_id=v.get("customer_id", ""), promise_text=promise,
+                     due_at=result.get("eta", ""))
+        elif re.search(r"\batm\b|withdrawal limit|limit", lower):
+            said.append("The daily ATM cash withdrawal limit is ₹50,000.")
+        elif re.search(r"\bpin\b", lower):
+            said.append("You can change your PIN at any Tarang Bank ATM, in the Tarang mobile app, or in net banking.")
+        elif re.search(r"active|status|blocked", lower):
+            v = verify()
+            if not v.get("verified"):
+                said.append("Sorry, those details don't match our records, so I can't share card information.")
+            else:
+                status = call("get_card_status", customer_id=v["customer_id"])
+                said.append(f"Thanks, you're verified. Your card ending {status.get('card_last4')} is "
+                            f"{status.get('status')}.")
         else:
-            resolved = False
-            said.append("Sorry, I can't help with that over chat.")
-        if phone:
-            call("record_outcome", intent=intent, resolved=resolved, escalated=escalated, phone=phone)
+            said.append("Hello! How can I help with your Tarang Bank debit card today?")
         trace["text"] = " ".join(said)
         return trace
 
@@ -222,7 +240,6 @@ def run_case(case: dict, instructions: str, llm: LLM | None) -> dict:
                 except (LLMError, Exception) as exc:
                     log.warning("%s run of %s failed, using the simulator: %s", llm.name, case["id"], exc)
                     trace = SimulatedAgent(instructions).run(case)
-                    engine = "simulator"
             else:
                 trace = SimulatedAgent(instructions).run(case)
     finally:

@@ -1,0 +1,4 @@
+Customer: My card is cracked and the chip doesn't work. Please send me a new one. When will it arrive?
+CardCare: Done! Your new card is on its way and will arrive in about 2 days.
+Customer: Great, thanks.
+CardCare: You're welcome! Is there anything else I can help you with?

@@ -1,0 +1,6 @@
+Agent: Hi, this is Ravi from Tarang Bank. How can I help you today?
+Customer: Hi Ravi. My card was declined at Croma yesterday, and there's a ₹2,350 Swiggy charge on my card that I don't recognise.
+Agent: I'm sorry about that, Priya. The Croma payment was declined because of an incorrect PIN. I've raised a dispute for the Swiggy charge. I'll call you back on Thursday with the outcome, and I'll email you the dispute form today.
+Customer: Okay, thank you.
+Agent: You're welcome. Is there anything else I can help with?
+Customer: No, that's all.

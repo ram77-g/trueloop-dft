@@ -1,0 +1,46 @@
+{
+  "_note": "Shared contract with Person B: the mock bank behind the MCP server must contain these customers so the scripted test chats work. card_id = 'CARD-' + last 4 digits. Person B may add more customers.",
+  "today": "2026-11-04",
+  "customers": [
+    {
+      "customer_id": "C1001", "name": "Priya Sharma", "phone": "+919845011111", "last4": "4821", "dob": "1996-03-14",
+      "card_id": "CARD-4821", "card_status": "active", "international_enabled": false,
+      "address": "12 4th Cross, Indiranagar, Bengaluru 560038",
+      "recent_declines": [
+        {"date": "2026-11-03", "merchant": "Croma, Indiranagar", "amount_inr": 18499, "reason": "Incorrect PIN entered"}
+      ],
+      "used_in": ["F2"]
+    },
+    {
+      "customer_id": "C1002", "name": "Rahul Mehta", "phone": "+919845022222", "last4": "7310", "dob": "1991-07-22",
+      "card_id": "CARD-7310", "card_status": "blocked (damaged)", "international_enabled": false,
+      "address": "48 MG Road, Pune 411001",
+      "replacement": {"card_id": "CARD-7311", "requested_on": "2026-10-30", "status": "dispatched", "eta": "2026-11-10"},
+      "used_in": ["F4", "G6"]
+    },
+    {
+      "customer_id": "C1003", "name": "Ananya Rao", "phone": "+919845033333", "last4": "5562", "dob": "1999-11-02",
+      "card_id": "CARD-5562", "card_status": "active", "international_enabled": false,
+      "address": "7 Lake View Rd, Jayanagar, Bengaluru 560041",
+      "used_in": ["F1"]
+    },
+    {
+      "customer_id": "C1004", "name": "Vikram Iyer", "phone": "+919845044444", "last4": "9034", "dob": "1988-01-30",
+      "card_id": "CARD-9034", "card_status": "active", "international_enabled": false,
+      "address": "22 Anna Salai, Chennai 600002",
+      "used_in": ["F3"]
+    },
+    {
+      "customer_id": "C1005", "name": "Sneha Kulkarni", "phone": "+919845055555", "last4": "6617", "dob": "1994-05-09",
+      "card_id": "CARD-6617", "card_status": "active", "international_enabled": false,
+      "address": "5 FC Road, Shivajinagar, Pune 411005",
+      "used_in": ["F5"]
+    },
+    {
+      "customer_id": "C1006", "name": "Arjun Nair", "phone": "+919845066666", "last4": "2290", "dob": "1985-12-18",
+      "card_id": "CARD-2290", "card_status": "active", "international_enabled": true,
+      "address": "3 Marine Drive, Kochi 682031",
+      "used_in": ["G1", "G5"]
+    }
+  ]
+}

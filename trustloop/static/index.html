@@ -136,6 +136,12 @@
       <div class="step"><b>5 · Verify</b><span class="small muted">Run old vs new on every case.</span><button class="btn small" id="m-eval">Evaluate</button><label class="small" style="margin-top:6px"><input type="checkbox" id="m-live" style="width:auto"> Use the live model (~100 calls)</label></div>
       <div class="step"><b>Try a bad fix</b><span class="small muted">"Always escalate" — watch the gate block it.</span><button class="btn danger small" id="m-bad">Over-eager patch</button></div>
     </div>
+    <div class="panel" style="margin-bottom:16px">
+      <h2>Import Person A's chats</h2>
+      <p class="hint">Paste the JSON from <code>python3 cases.py export --version v1</code> (export/transcripts_v1.json), then Capture failures.</p>
+      <textarea id="m-import-text" placeholder='{"version": "v1", "sessions": [...]}' style="min-height:70px"></textarea>
+      <div class="row" style="margin-top:8px"><input type="file" id="m-import-file" accept=".json"><button class="btn secondary" id="m-import">Import chats</button></div>
+    </div>
     <div class="grid two">
       <div class="panel"><h2>Failure clusters</h2><div id="clusters" class="muted">Nothing captured yet.</div></div>
       <div class="panel"><h2>Proposed patch</h2><div id="patch" class="muted">No patch yet.</div></div>
@@ -143,7 +149,7 @@
     <div class="panel" style="margin-top:16px"><h2>Regression gate</h2><div id="gate" class="muted">Evaluate a patch to see the gate decision.</div></div>
     <div class="panel" style="margin-top:16px">
       <h2>Agent instructions</h2>
-      <p class="hint">After approval, paste the newest version into the CardCare orchestration in Talkdesk as v2.</p>
+      <p class="hint">After approval, download the newest spec and build the Talkdesk import with Person A's <code>orchestrator.py build --spec cardcare_v2.spec.json</code> (or paste the agents' instructions by hand).</p>
       <div id="instructions"></div>
       <div class="row" style="margin-top:10px"><a class="btn secondary" id="cases-csv" href="#" style="text-decoration:none;text-align:center">Download cases (CSV) for Talkdesk Datasets</a></div>
     </div>
@@ -190,9 +196,9 @@ document.querySelectorAll("nav button").forEach((b) => b.onclick = () => {
 
 async function loadCustomers() {
   const list = await api("/api/customers");
-  document.querySelectorAll("select.customers").forEach((s) => s.innerHTML = list.map((c) => `<option value="${esc(c.phone)}">${esc(c.name)} · ${esc(c.phone)}</option>`).join(""));
+  document.querySelectorAll("select.customers").forEach((s) => s.innerHTML = list.map((c) => `<option value="${esc(c.phone)}">${esc(c.name)} · ${esc(c.customer_id)} · ${esc(c.phone)}</option>`).join(""));
   document.querySelectorAll("select.customers-id").forEach((s) => s.innerHTML = list.map((c) => `<option value="${esc(c.customer_id)}">${esc(c.name)}</option>`).join(""));
-  $("tx-phone").value = "+919845001009"; $("card-phone").value = "+919845001009"; $("ev-customer").value = "C009";
+  $("tx-phone").value = "+919845011111"; $("card-phone").value = "+919845011111"; $("ev-customer").value = "C1001";
 }
 
 async function refreshStatus() {
@@ -249,7 +255,7 @@ async function refreshMender() {
      <div class="small"><b>Root cause:</b> ${esc(c.root_cause)}</div></div>`).join("") : "Nothing captured yet.";
   currentPatch = patches.find((p) => p.kind === "fix") || patches[0] || null;
   renderPatch(patches[0] || null);
-  $("instructions").innerHTML = instructions.map((v, i) => `<details ${i === 0 ? "open" : ""}><summary><b>v${v.version}</b> · ${esc(v.label)}</summary><pre>${esc(v.text)}</pre></details>`).join("");
+  $("instructions").innerHTML = instructions.map((v, i) => `<details ${i === 0 ? "open" : ""}><summary><b>v${v.version}</b> · ${esc(v.label)} · <a href="#" onclick="downloadSpec(${v.version}); return false;">download cardcare_v${v.version}.spec.json</a></summary><pre>${esc(v.prompt)}</pre></details>`).join("");
 }
 function renderPatch(p) {
   if (!p) { $("patch").innerHTML = "No patch yet."; return; }
@@ -277,6 +283,10 @@ $("m-bad").onclick = (e) => busy(e.target, async () => { const p = await api("/a
 const evalEngine = () => $("m-live").checked ? "llm" : "simulator";
 $("m-eval").onclick = (e) => busy(e.target, async () => { if (!currentPatch) throw new Error("Draft a fix first"); toast(`Running every case on both versions (${evalEngine() === "llm" ? "live model, this takes a few minutes" : "simulator"})…`); renderGate(await api(`/api/mender/patches/${currentPatch.id}/evaluate?engine=${evalEngine()}`, {method: "POST"})); refreshMender(); });
 $("cases-csv").onclick = async (ev) => { ev.preventDefault(); const text = await api("/api/mender/cases.csv"); const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([text], {type: "text/csv"})); a.download = "trustloop_cases.csv"; a.click(); };
+
+window.downloadSpec = async (version) => { const spec = await api(`/api/mender/instructions/${version}/spec.json`); const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([JSON.stringify(spec, null, 2)], {type: "application/json"})); a.download = `cardcare_v${version}.spec.json`; a.click(); };
+$("m-import-file").onchange = async (e) => { const f = e.target.files[0]; if (f) $("m-import-text").value = await f.text(); };
+$("m-import").onclick = (e) => busy(e.target, async () => { let payload; try { payload = JSON.parse($("m-import-text").value); } catch (err) { throw new Error("That isn't valid JSON"); } const r = await api("/api/mender/import-runs", {method: "POST", body: JSON.stringify(payload)}); toast(`Imported ${r.imported} chat(s). Now click Capture failures.`); });
 
 async function refreshLog() {
   const rows = await api("/api/tool-calls?limit=100");

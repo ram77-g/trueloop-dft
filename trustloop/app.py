@@ -49,7 +49,7 @@ class NoteIn(BaseModel):
 
 
 class InstructionsIn(BaseModel):
-    text: str
+    spec: dict
     label: str = "edited in console"
 
 
@@ -141,7 +141,8 @@ def create_app(settings: Settings | None = None, store: db.Store | None = None) 
 
     @app.get("/api/customers")
     def customers():
-        return store.query("SELECT customer_id, name, phone, email FROM customers ORDER BY customer_id")
+        return store.query("SELECT c.customer_id, c.name, c.phone, c.email, k.card_id FROM customers c "
+                           "JOIN cards k ON k.customer_id = c.customer_id ORDER BY c.customer_id")
 
     @app.post("/api/transcripts")
     def add_transcript(body: TranscriptIn):
@@ -236,6 +237,13 @@ def create_app(settings: Settings | None = None, store: db.Store | None = None) 
 
     # --- Mender ---------------------------------------------------------------------------
 
+    @app.post("/api/mender/import-runs")
+    def import_runs(payload: dict = Body(...)):
+        """Person A's exported chats (cases.py export → transcripts_<version>.json)."""
+        if not isinstance(payload.get("sessions"), list):
+            raise HTTPException(400, "Expected the JSON from cases.py export, with a sessions list")
+        return mender.import_runs(store, payload)
+
     @app.post("/api/mender/simulate-traffic")
     def simulate_traffic():
         return mender.simulate_traffic(store)
@@ -268,12 +276,22 @@ def create_app(settings: Settings | None = None, store: db.Store | None = None) 
 
     @app.get("/api/mender/instructions")
     def instructions():
-        mender.ensure_v1(store)
-        return store.query("SELECT * FROM instructions ORDER BY version DESC")
+        return mender.list_versions(store)
+
+    @app.get("/api/mender/instructions/{version}/spec.json")
+    def spec_file(version: int):
+        """The spec for Person A's orchestrator.py build --spec."""
+        row = mender.get_version(store, version)
+        if not row:
+            raise HTTPException(404, "No such version")
+        return JSONResponse(row["spec"], headers={
+            "Content-Disposition": f"attachment; filename=cardcare_v{version}.spec.json"})
 
     @app.put("/api/mender/instructions")
     def edit_instructions(body: InstructionsIn):
-        return mender.set_instructions(store, body.text, body.label)
+        if not body.spec.get("agents"):
+            raise HTTPException(400, "A spec needs an agents list")
+        return mender.set_instructions(store, body.spec, body.label)
 
     @app.post("/api/mender/patches")
     def propose(body: PatchIn):
@@ -336,8 +354,8 @@ def create_app(settings: Settings | None = None, store: db.Store | None = None) 
         folder = Path(__file__).resolve().parent.parent / "demo" / "transcripts"
         loaded = []
         for path, kwargs in (
-            ("human_fatima_dispute.txt", {"agent_name": "Ravi", "phone": "+919845001009"}),
-            ("ai_meera_replacement.txt", {"agent_name": "CardCare", "agent_type": "ai", "phone": "+919845001005"}),
+            ("human_priya_dispute.txt", {"agent_name": "Ravi", "phone": "+919845011111"}),
+            ("ai_sneha_replacement.txt", {"agent_name": "CardCare", "agent_type": "ai", "phone": "+919845055555"}),
         ):
             result = promises.ingest_transcript(store, llm, text=(folder / path).read_text(encoding="utf-8"),
                                                 source="sample", **kwargs)
@@ -350,7 +368,7 @@ def create_app(settings: Settings | None = None, store: db.Store | None = None) 
 def _card_html(card: dict | None, phone: str) -> str:
     esc = html.escape
     if not card:
-        body = f"<p class='muted'>No Nimbus Bank customer found for {esc(phone or 'this contact')}.</p>"
+        body = f"<p class='muted'>No Tarang Bank customer found for {esc(phone or 'this contact')}.</p>"
     else:
         def items(rows, cls):
             return "".join(

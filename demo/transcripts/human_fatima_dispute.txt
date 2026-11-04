@@ -1,4 +1,4 @@
-Agent: Hi, this is Ravi from Nimbus Bank. How can I help you today?
+Agent: Hi, this is Ravi from Tarang Bank. How can I help you today?
 Customer: Hi Ravi. There's a ₹340 Uber charge on my card that I don't recognise, and my card was declined yesterday.
 Agent: I'm sorry about that, Fatima. I've raised a dispute for the Uber charge. I'll call you back on Thursday with the outcome, and I'll email you the dispute form today.
 Customer: Okay, thank you.

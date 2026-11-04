@@ -190,14 +190,14 @@ class ScriptedAgent:
 
     def run_agent(self, *, system, user_message, tools, run_tool, max_turns):
         calls = []
-        for name, args in (("verify_customer", {"phone": "+919845001010", "last4": "3390", "dob": "1986-02-28"}),
-                           ("get_card_status", {"phone": "+919845001010"})):
+        for name, args in (("verify_customer", {"phone": "+91 98450 66666", "last4": "2290", "dob": "18 Dec 1985"}),
+                           ("get_card_status", {"customer_id": "C1006"})):
             calls.append({"name": name, "args": args, "result": run_tool(name, args)})
         return calls, "Your card is active."
 
 
 def test_evaluator_runs_any_provider(store):
-    [golden] = [c for c in mender.golden_cases() if c["id"] == "G1-card-status"]
+    [golden] = [c for c in evaluator.load_cases() if c["id"] == "G1"]
     result = evaluator.run_case(golden, "instructions", ScriptedAgent())
     assert result["engine"] == "gemini" and result["passed"], result
     assert result["tools"] == ["verify_customer", "get_card_status"]

@@ -40,48 +40,86 @@ def test_working_days_skip_weekends():
 
 
 def test_policy_flags_fast_replacement_and_refund():
-    assert "5–7 working days" in policy.check_promise("replacement", BASE, resolve("in 2 days", BASE)[0])
+    assert "7 working days" in policy.check_promise("replacement", BASE, resolve("in 2 days", BASE)[0])
     assert policy.check_promise("replacement", BASE, resolve("in 7 working days", BASE)[0]) == ""
+    assert policy.check_promise("replacement", BASE, resolve("in 5 working days", BASE)[0]) != ""
     assert policy.check_promise("refund", BASE, resolve("tomorrow", BASE)[0]) != ""
+    assert policy.check_promise("refund", BASE, resolve("within 5 working days", BASE)[0]) == ""
 
 
-def test_policy_flags_sunday_and_late_callbacks():
-    assert "Sunday" in policy.check_promise("callback", BASE, resolve("sunday", BASE)[0])
-    assert "9:00" in policy.check_promise("callback", BASE, resolve("thursday at 8 pm", BASE)[0])
-    assert policy.check_promise("callback", BASE, resolve("thursday at 11 am", BASE)[0]) == ""
+def test_policy_flags_callbacks_with_a_time_slot():
+    thursday = resolve("thursday", BASE)[0]
+    assert "no specific time slot" in policy.check_promise("callback", BASE, thursday, "I'll call you at 3 pm")
+    assert policy.check_promise("callback", BASE, thursday, "I'll call you back on Thursday") == ""
 
 
-def test_seed_is_idempotent(store):
+def test_seed_loads_person_a_customers_and_extras(store):
     bank.seed(store)
-    assert len(store.query("SELECT * FROM customers")) == 10
+    ids = {r["customer_id"] for r in store.query("SELECT customer_id FROM customers")}
+    assert {"C1001", "C1002", "C1003", "C1004", "C1005", "C1006"} <= ids and len(ids) == 16
+    names = [r["name"] for r in store.query("SELECT name FROM customers")]
+    assert len(names) == len(set(names)), "customer names must be unique"
 
 
-def test_verify(store):
-    ok = bank.verify(store, "+91 98450 01005", "6604", "1995-05-09")
-    assert ok == {"verified": True, "customer_id": "C005", "name": "Meera Nair"}
-    assert bank.verify(store, "9845001005", "0000", "1995-05-09")["verified"] is False
-    assert bank.verify(store, "123", "6604", "1995-05-09")["verified"] is False
+@pytest.mark.parametrize("dob", ["1999-11-02", "2 Nov 1999", "2nd November 1999", "02/11/1999", "Nov 2, 1999"])
+def test_verify_accepts_dates_as_people_type_them(store, dob):
+    result = bank.verify(store, "+91 98450 33333", "5562", dob)
+    assert result == {"verified": True, "customer_id": "C1003", "card_id": "CARD-5562", "first_name": "Ananya",
+                      "name": "Ananya Rao"}
+
+
+def test_verify_reveals_nothing_on_wrong_details(store):
+    wrong_card = bank.verify(store, "+919845066666", "1111", "18 Dec 1985")
+    unknown_phone = bank.verify(store, "+910000000000", "2290", "18 Dec 1985")
+    assert wrong_card == unknown_phone == {"verified": False, "reason": "The details don't match our records."}
+
+
+def test_find_by_card_id_including_the_replacement_card(store):
+    assert bank.find_customer(store, card_id="CARD-5562")["customer_id"] == "C1003"
+    assert bank.find_customer(store, card_id="5562")["customer_id"] == "C1003"
+    assert bank.find_customer(store, card_id="CARD-7311")["customer_id"] == "C1002"
+
+
+def test_card_status_matches_person_a_data(store):
+    rahul = bank.find_customer(store, customer_id="C1002")
+    status = bank.card_status(store, rahul)
+    assert status["status"] == "blocked (damaged)"
+    assert status["replacement"] == {"card_id": "CARD-7311", "status": "dispatched",
+                                     "requested_at": "2026-10-30T12:00:00+05:30", "eta": "2026-11-10"}
+    assert bank.card_status(store, bank.find_customer(store, customer_id="C1006"))["international_enabled"] is True
 
 
 def test_duplicate_replacement_is_charged_again(store):
-    priya = bank.find_customer(store, customer_id="C003")
-    status = bank.card_status(store, priya)
-    assert status["replacement"]["status"] == "in_transit"
-    result = bank.request_replacement(store, priya, address_confirmed=True)
-    assert "already in transit" in result["warning"]
-    assert result["fee_inr"] == 200
+    rahul = bank.find_customer(store, customer_id="C1002")
+    result = bank.request_replacement(store, rahul, address_confirmed=True)
+    assert "already dispatched" in result["warning"] and result["fee_inr"] == 200
+    assert result["new_card_id"] == "CARD-7312"
 
 
-def test_stolen_replacement_is_free(store):
-    meera = bank.find_customer(store, customer_id="C005")
-    assert bank.request_replacement(store, meera, True, reason="stolen")["fee_inr"] == 0
+def test_new_replacement_takes_seven_working_days(store):
+    sneha = bank.find_customer(store, customer_id="C1005")
+    result = bank.request_replacement(store, sneha, address_confirmed=True)
+    expected = add_working_days(clock.now(store), 7).date().isoformat()
+    assert result["eta"] == expected and "warning" not in result and result["new_card_id"] == "CARD-6618"
 
 
-def test_declines_carry_explanations(store):
-    rohit = bank.find_customer(store, customer_id="C002")
-    decline = bank.recent_declines(store, rohit)["declines"][0]
-    assert decline["reason"] == "insufficient_funds"
-    assert "balance" in decline["explanation"]
+def test_declines_in_the_contract_shape(store):
+    priya = bank.find_customer(store, customer_id="C1001")
+    assert bank.recent_declines(store, priya)["declines"] == [
+        {"date": "2026-11-03", "merchant": "Croma, Indiranagar", "amount_inr": 18499, "reason": "Incorrect PIN entered"}]
+
+
+def test_old_database_is_rebuilt(tmp_path):
+    import sqlite3
+    path = tmp_path / "old.db"
+    with sqlite3.connect(path) as conn:
+        conn.execute("CREATE TABLE customers (customer_id TEXT PRIMARY KEY, name TEXT)")
+        conn.execute("INSERT INTO customers VALUES ('X', 'Old')")
+    from trustloop import db
+    s = db.Store(str(path))
+    bank.seed(s)
+    assert s.query_one("SELECT COUNT(*) AS n FROM customers")["n"] == 16
+    s.close()
 
 
 def test_clock_advance_and_reset(store):

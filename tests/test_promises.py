@@ -53,7 +53,7 @@ def test_ai_promise_that_breaks_policy(store):
                                         phone="+919845001005")
     [promise] = result["promises"]
     assert promise["kind"] == "replacement"
-    assert "5–7 working days" in promise["policy_violation"]
+    assert "7 working days" in promise["policy_violation"]
     assert promise["status"] == "cant_keep"
 
 

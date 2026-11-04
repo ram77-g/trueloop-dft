@@ -6,17 +6,22 @@ import sqlite3
 import threading
 from contextlib import contextmanager
 
+# Bump when the tables change: older databases are then rebuilt from scratch on start.
+SCHEMA_VERSION = 2
+TABLES = ("settings", "customers", "cards", "declines", "bank_events", "tool_calls", "outcomes", "transcripts",
+          "promises", "messages", "failures", "instructions", "patches", "eval_runs")
+
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
 
 CREATE TABLE IF NOT EXISTS customers (
     customer_id TEXT PRIMARY KEY, name TEXT NOT NULL, phone TEXT UNIQUE NOT NULL,
-    last4 TEXT NOT NULL, dob TEXT NOT NULL, email TEXT NOT NULL
+    last4 TEXT NOT NULL, dob TEXT NOT NULL, email TEXT NOT NULL, address TEXT NOT NULL DEFAULT ''
 );
 CREATE TABLE IF NOT EXISTS cards (
-    customer_id TEXT PRIMARY KEY, last4 TEXT NOT NULL, status TEXT NOT NULL,
+    customer_id TEXT PRIMARY KEY, card_id TEXT UNIQUE NOT NULL, last4 TEXT NOT NULL, status TEXT NOT NULL,
     international INTEGER NOT NULL DEFAULT 0, international_until TEXT,
-    replacement_status TEXT, replacement_requested_at TEXT, replacement_eta TEXT
+    replacement_card_id TEXT, replacement_status TEXT, replacement_requested_at TEXT, replacement_eta TEXT
 );
 CREATE TABLE IF NOT EXISTS declines (
     id INTEGER PRIMARY KEY AUTOINCREMENT, customer_id TEXT NOT NULL, at TEXT NOT NULL,
@@ -82,6 +87,10 @@ class Store:
         self._conn = sqlite3.connect(path, check_same_thread=False, isolation_level=None)
         self._conn.row_factory = sqlite3.Row
         self._conn.execute("PRAGMA foreign_keys = ON")
+        if self._conn.execute("PRAGMA user_version").fetchone()[0] != SCHEMA_VERSION:
+            for table in TABLES:
+                self._conn.execute(f"DROP TABLE IF EXISTS {table}")
+            self._conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
         self._conn.executescript(SCHEMA)
 
     def execute(self, sql: str, params: tuple | list = ()) -> int:

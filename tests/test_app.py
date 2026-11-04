@@ -85,7 +85,7 @@ def test_mender_flow_over_http(client):
     assert len(client.post("/api/mender/simulate-traffic").json()) == 5
     clusters = client.post("/api/mender/capture").json()["clusters"]
     assert len(clusters) == 5
-    assert len(client.post("/api/mender/cases").json()) == 16
+    assert len(client.post("/api/mender/cases").json()) == 11
     assert client.get("/api/mender/cases.csv").text.startswith("case_id,kind")
     fix = client.post("/api/mender/patches", json={"kind": "fix"}).json()
     report = client.post(f"/api/mender/patches/{fix['id']}/evaluate").json()
@@ -103,7 +103,7 @@ def test_demo_reset_and_samples(client):
     assert [x["promises"] for x in loaded] == [2, 1]
     client.post("/api/demo/reset")
     assert client.get("/api/promises").json() == []
-    assert len(client.get("/api/customers").json()) == 10
+    assert len(client.get("/api/customers").json()) == 16
 
 
 def test_api_key_is_enforced():
