@@ -11,6 +11,9 @@ services:
         value: 3.12.7
       - key: GEMINI_API_KEY
         sync: false
+      # Gemini models in order of preference (measured reliable on 4 Nov 2026); others are tried after these.
+      - key: TRUSTLOOP_MODEL
+        value: gemini-3-flash-preview,gemini-3.5-flash-lite,gemini-3.1-flash-lite,gemini-flash-lite-latest
       - key: TRUSTLOOP_API_KEY
         sync: false
       - key: TRUSTLOOP_WEBHOOK_URL

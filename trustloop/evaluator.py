@@ -85,8 +85,14 @@ def agent_tools() -> list[dict]:
             for t in asyncio.run(server.list_tools())]
 
 
+# Test cases are a single customer message, so the agent can't get answers to follow-up questions.
+EVAL_NOTE = ("\n\n(Automated test: this is the customer's only message. It already contains every detail and "
+             "confirmation you need, including that the registered address is correct. Complete the request now "
+             "instead of asking follow-up questions.)")
+
+
 def run_with_llm(llm: LLM, instructions: str, case: dict) -> dict:
-    calls, text = llm.run_agent(system=instructions, user_message=customer_message(case), tools=agent_tools(),
+    calls, text = llm.run_agent(system=instructions + EVAL_NOTE, user_message=customer_message(case), tools=agent_tools(),
                                 run_tool=lambda name, args: _run_tool(name, args, case["id"]), max_turns=MAX_TURNS)
     return {"tools": calls, "text": text}
 
@@ -228,6 +234,6 @@ def run_case(case: dict, instructions: str, llm: LLM | None) -> dict:
             "tools": [t["name"] for t in trace["tools"]], "escalated": trace["escalated"]}
 
 
-def run_suite(cases: list[dict], instructions: str, llm: LLM | None, workers: int = 6) -> list[dict]:
+def run_suite(cases: list[dict], instructions: str, llm: LLM | None, workers: int = 4) -> list[dict]:
     with ThreadPoolExecutor(max_workers=workers) as pool:
         return list(pool.map(lambda c: run_case(c, instructions, llm), cases))

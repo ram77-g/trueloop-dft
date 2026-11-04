@@ -106,8 +106,9 @@ class GeminiLLM:
 
         self.types = types
         self.client = client or genai.Client(api_key=settings.gemini_api_key,
-                                             http_options=types.HttpOptions(timeout=30_000))
-        self._pinned = settings.model
+                                             http_options=types.HttpOptions(timeout=20_000))
+        # TRUSTLOOP_MODEL may list several models, best first: "gemini-3-flash-preview,gemini-3.5-flash-lite"
+        self._pinned = [m.strip() for m in (settings.model or "").split(",") if m.strip()]
         self._candidates: list[str] | None = None
         self._lock = threading.Lock()
 
@@ -120,14 +121,15 @@ class GeminiLLM:
         with self._lock:
             if self._candidates is None:
                 ranked = self._rank_models()
-                ordered = ([self._pinned] if self._pinned else []) + [m for m in ranked if m != self._pinned]
+                ordered = self._pinned + [m for m in ranked if m not in self._pinned]
                 self._candidates = self._probe(ordered)
                 log.info("Gemini models, in order of preference: %s", self._candidates)
             return list(self._candidates)
 
     def _probe(self, ordered: list[str], limit: int = 6) -> list[str]:
         """Put the first model that answers a tiny request at the front, so real work doesn't wait on outages."""
-        config = self.types.GenerateContentConfig(max_output_tokens=16)
+        config = self.types.GenerateContentConfig(
+            max_output_tokens=16, automatic_function_calling=self.types.AutomaticFunctionCallingConfig(disable=True))
         for model in ordered[:limit]:
             try:
                 self.client.models.generate_content(model=model, contents="Reply with: ok", config=config)
@@ -196,6 +198,7 @@ class GeminiLLM:
         config = self.types.GenerateContentConfig(
             system_instruction=system, response_mime_type="application/json", response_json_schema=schema,
             max_output_tokens=max(max_tokens, 8000),
+            automatic_function_calling=self.types.AutomaticFunctionCallingConfig(disable=True),
         )
         response = self._generate(prompt, config)
         try:

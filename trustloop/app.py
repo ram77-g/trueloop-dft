@@ -62,6 +62,27 @@ class ResultsIn(BaseModel):
     after: dict[str, bool]
 
 
+class RequireKey:
+    """Checks the API key on protected paths.
+
+    A plain ASGI middleware on purpose: Starlette's BaseHTTPMiddleware wraps the response stream and breaks
+    the MCP SSE and streaming endpoints when a client disconnects."""
+
+    def __init__(self, app, key: str):
+        self.app, self.key = app, key
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] == "http" and scope["path"].startswith(PROTECTED):
+            request = Request(scope)
+            auth = request.headers.get("authorization", "")
+            given = (auth[7:].strip() if auth.lower().startswith("bearer ") else "") \
+                or request.headers.get("x-api-key", "") or request.query_params.get("key", "")
+            if given != self.key:
+                await JSONResponse({"detail": "Missing or wrong API key"}, status_code=401)(scope, receive, send)
+                return
+        await self.app(scope, receive, send)
+
+
 def _webhook_text(payload: dict) -> tuple[str, str]:
     """Accept the shapes a Talkdesk automation might send: plain text, or a list of messages."""
     phone = str(payload.get("phone") or payload.get("contact_phone") or payload.get("customer_phone") or "")
@@ -101,15 +122,8 @@ def create_app(settings: Settings | None = None, store: db.Store | None = None) 
     app.router.routes.extend(mcp_http.routes)
     app.router.routes.extend(mcp_sse.routes)
 
-    @app.middleware("http")
-    async def require_key(request: Request, call_next):
-        if settings.api_key and request.url.path.startswith(PROTECTED):
-            auth = request.headers.get("authorization", "")
-            given = (auth.removeprefix("Bearer ").strip() if auth.lower().startswith("bearer ") else "") \
-                or request.headers.get("x-api-key", "") or request.query_params.get("key", "")
-            if given != settings.api_key:
-                return JSONResponse({"detail": "Missing or wrong API key"}, status_code=401)
-        return await call_next(request)
+    if settings.api_key:
+        app.add_middleware(RequireKey, key=settings.api_key)
 
     # --- health and console ---------------------------------------------------------------
 

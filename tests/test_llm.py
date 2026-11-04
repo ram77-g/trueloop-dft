@@ -124,6 +124,13 @@ def test_probe_skips_a_model_that_is_down():
     assert llm.candidates[-1] == "gemini-3.8-flash"
 
 
+def test_preference_list_comes_first():
+    names = ["gemini-3.8-flash", "gemini-3-flash-preview", "gemini-3.5-flash-lite"]
+    llm, fake = _gemini(names=names, model="gemini-3-flash-preview, gemini-3.5-flash-lite")
+    assert llm.candidates == ["gemini-3-flash-preview", "gemini-3.5-flash-lite", "gemini-3.8-flash"]
+    assert fake.probes == ["gemini-3-flash-preview"]
+
+
 def test_lite_models_rank_last():
     llm, _ = _gemini(names=["gemini-3.1-flash-lite", "gemini-3-flash-preview", "gemini-3.5-flash", "gemini-flash-latest"])
     assert llm.candidates == ["gemini-3.5-flash", "gemini-3-flash-preview", "gemini-flash-latest", "gemini-3.1-flash-lite"]

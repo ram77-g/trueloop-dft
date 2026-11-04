@@ -1,5 +1,6 @@
 import asyncio
 import json
+import logging
 import socket
 import threading
 import time
@@ -118,12 +119,29 @@ def test_api_key_is_enforced():
 
 # --- a real server, reached with the official MCP client as Talkdesk would -----------------------
 
+LIVE_KEY = "live-test-key"
+AUTH = {"Authorization": f"Bearer {LIVE_KEY}"}
+
+
+class _Collect(logging.Handler):
+    def __init__(self):
+        super().__init__(logging.ERROR)
+        self.records = []
+
+    def emit(self, record):
+        self.records.append(record)
+
+
+SERVER_ERRORS = _Collect()
+
+
 @pytest.fixture(scope="module")
 def live_url():
     with socket.socket() as s:
         s.bind(("127.0.0.1", 0))
         port = s.getsockname()[1]
-    server = uvicorn.Server(uvicorn.Config(_app(), host="127.0.0.1", port=port, log_level="warning"))
+    server = uvicorn.Server(uvicorn.Config(_app(api_key=LIVE_KEY), host="127.0.0.1", port=port, log_level="warning"))
+    logging.getLogger("uvicorn.error").addHandler(SERVER_ERRORS)
     thread = threading.Thread(target=server.run, daemon=True)
     thread.start()
     deadline = time.time() + 15
@@ -145,7 +163,7 @@ async def _exercise(session: ClientSession) -> tuple[set, str]:
 
 def test_mcp_over_streamable_http(live_url):
     async def run():
-        async with streamablehttp_client(f"{live_url}/mcp") as (read, write, _):
+        async with streamablehttp_client(f"{live_url}/mcp", headers=AUTH) as (read, write, _):
             async with ClientSession(read, write) as session:
                 return await _exercise(session)
     names, payload = asyncio.run(run())
@@ -155,8 +173,20 @@ def test_mcp_over_streamable_http(live_url):
 
 def test_mcp_over_sse(live_url):
     async def run():
-        async with sse_client(f"{live_url}/sse") as (read, write):
+        async with sse_client(f"{live_url}/sse", headers=AUTH) as (read, write):
             async with ClientSession(read, write) as session:
                 return await _exercise(session)
     names, payload = asyncio.run(run())
     assert len(names) == 9 and "Meera Nair" in payload
+
+
+def test_live_server_rejects_missing_key(live_url):
+    import httpx
+    assert httpx.get(f"{live_url}/api/customers").status_code == 401
+
+
+def test_streaming_endpoints_raise_no_server_errors(live_url):
+    """SSE and streaming responses must pass through the auth middleware without ASGI errors."""
+    time.sleep(0.5)  # let the SSE disconnect from the earlier test finish on the server
+    errors = [r.getMessage() for r in SERVER_ERRORS.records]
+    assert errors == [], errors
