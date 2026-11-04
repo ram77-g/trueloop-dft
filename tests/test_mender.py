@@ -114,6 +114,28 @@ def test_fix_patch_passes_the_gate_and_keeps_the_spec_importable(captured):
     assert v2["version"] == 2 and v2["spec"] == spec
 
 
+def test_v2_follows_person_a_build_rules(captured):
+    """Person A's orchestrator.py rejects a v2 that breaks these rules, so Mender never produces one."""
+    patch = mender.propose_patch(captured, None)
+    v1 = mender.current_instructions(captured)["spec"]
+    v2 = agentspec.loads(patch["text"])
+    assert agentspec.build_problems(v2, v1, set(mcp_tools.TOOLS)) == []
+    assert [k for k in v2] == [k for k in v1]  # name, description, welcome_message, agents
+    assert agentspec.all_tools(v2) == set(mcp_tools.TOOLS)  # all 9 tools still attached
+
+
+def test_build_rules_catch_bad_specs(captured):
+    v1 = mender.current_instructions(captured)["spec"]
+    bad = json.loads(json.dumps(v1))
+    bad["agents"][1]["name"] = "Identity_Agent"
+    bad["agents"][2]["tools"] += ["get_recent_declines", "verify_customer"]
+    bad["agents"][4]["tools"].remove("get_customer_promises")
+    problems = agentspec.build_problems(bad, v1, set(mcp_tools.TOOLS))
+    assert any("must end in _DFT" in p for p in problems)
+    assert any("limit is 5" in p for p in problems)
+    assert any("get_customer_promises" in p for p in problems)
+
+
 def test_overeager_patch_is_blocked(captured):
     mender.build_cases(captured)
     patch = mender.propose_overeager_patch(captured)

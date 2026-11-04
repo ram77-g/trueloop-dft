@@ -377,6 +377,9 @@ def _unknown_tools(text: str) -> set[str]:
 
 
 def _save_patch(store: Store, base: dict, kind: str, spec: dict, changes: list[dict], source: str) -> dict:
+    problems = agentspec.build_problems(spec, base["spec"], set(mcp_tools.TOOLS))
+    if problems:
+        raise LLMError("Patch would not build in Talkdesk: " + "; ".join(problems))
     diff = "".join(difflib.unified_diff(
         base["prompt"].splitlines(True), (agentspec.to_prompt(spec) + "\n").splitlines(True),
         fromfile=f"v{base['version']}", tofile="proposed"))

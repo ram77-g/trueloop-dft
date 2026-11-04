@@ -66,3 +66,31 @@ def apply_edits(spec: dict, edits: list[dict]) -> dict:
 
 def all_tools(spec: dict) -> set[str]:
     return {t for a in spec["agents"] for t in a.get("tools", [])}
+
+
+SPEC_KEYS = ("name", "description", "welcome_message", "agents")
+AGENT_KEYS = ("name", "role", "goal", "instruction", "routing_condition", "tools")
+MAX_TOOLS_PER_AGENT = 5  # Talkdesk's "Skills (n/5)"
+
+
+def build_problems(spec: dict, base: dict, server_tools: set[str]) -> list[str]:
+    """Why Person A's orchestrator.py build would reject this spec as the next version of base ([] = fine)."""
+    problems = [f"missing top-level field {k}" for k in SPEC_KEYS if k not in spec]
+    agents = spec.get("agents", [])
+    problems += [f"{a.get('name', '?')} is missing {k}" for a in agents for k in AGENT_KEYS if k not in a]
+    supervisors = [a for a in agents if a.get("role") == "SUPERVISING_AGENT"]
+    if len(supervisors) != 1:
+        problems.append(f"needs exactly one SUPERVISING_AGENT, found {len(supervisors)}")
+    names = [a.get("name", "") for a in agents]
+    problems += [f"agent {n} must end in _DFT" for n in names if not n.endswith("_DFT")]
+    if names != [a["name"] for a in base["agents"]]:
+        problems.append("agent names or order differ from the previous version")
+    for a in agents:
+        tools = a.get("tools", [])
+        if len(tools) > MAX_TOOLS_PER_AGENT:
+            problems.append(f"{a['name']} has {len(tools)} tools; the limit is {MAX_TOOLS_PER_AGENT}")
+        problems += [f"{a['name']} uses {t}, which the server doesn't have" for t in tools if t not in server_tools]
+    missing = all_tools(base) - all_tools(spec)
+    if missing:
+        problems.append(f"tools no longer attached: {sorted(missing)}")
+    return problems
