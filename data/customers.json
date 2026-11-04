@@ -1,0 +1,16 @@
+[
+  {"customer_id": "C001", "name": "Ananya Rao", "phone": "+919845001001", "last4": "4421", "dob": "1990-03-14", "email": "ananya.rao@example.com", "card": {"status": "active"}},
+  {"customer_id": "C002", "name": "Rohit Menon", "phone": "+919845001002", "last4": "7788", "dob": "1985-11-02", "email": "rohit.menon@example.com", "card": {"status": "active"},
+   "declines": [{"hours_ago": 2, "merchant": "Reliance Smart, Bengaluru", "amount": 4520, "reason": "insufficient_funds"}]},
+  {"customer_id": "C003", "name": "Priya Sharma", "phone": "+919845001003", "last4": "3150", "dob": "1993-07-21", "email": "priya.sharma@example.com",
+   "card": {"status": "blocked", "replacement": {"status": "in_transit", "requested_working_days_ago": 2}}},
+  {"customer_id": "C004", "name": "Karthik Iyer", "phone": "+919845001004", "last4": "9902", "dob": "1988-01-30", "email": "karthik.iyer@example.com", "card": {"status": "active"}},
+  {"customer_id": "C005", "name": "Meera Nair", "phone": "+919845001005", "last4": "6604", "dob": "1995-05-09", "email": "meera.nair@example.com", "card": {"status": "active"}},
+  {"customer_id": "C006", "name": "Arjun Reddy", "phone": "+919845001006", "last4": "2287", "dob": "1979-09-17", "email": "arjun.reddy@example.com", "card": {"status": "active"}},
+  {"customer_id": "C007", "name": "Sneha Kulkarni", "phone": "+919845001007", "last4": "5519", "dob": "1991-12-25", "email": "sneha.kulkarni@example.com", "card": {"status": "active"},
+   "declines": [{"hours_ago": 5, "merchant": "Amazon.in", "amount": 1299, "reason": "online_transactions_disabled"}]},
+  {"customer_id": "C008", "name": "Vikram Singh", "phone": "+919845001008", "last4": "8843", "dob": "1983-04-11", "email": "vikram.singh@example.com", "card": {"status": "active"}},
+  {"customer_id": "C009", "name": "Fatima Sheikh", "phone": "+919845001009", "last4": "1176", "dob": "1997-08-03", "email": "fatima.sheikh@example.com", "card": {"status": "active"},
+   "declines": [{"hours_ago": 26, "merchant": "Uber India", "amount": 340, "reason": "suspected_fraud_check"}]},
+  {"customer_id": "C010", "name": "Rahul Das", "phone": "+919845001010", "last4": "3390", "dob": "1986-02-28", "email": "rahul.das@example.com", "card": {"status": "active"}}
+]

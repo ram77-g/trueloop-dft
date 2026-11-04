@@ -1,0 +1,293 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TrustLoop console</title>
+<style>
+  :root { --ink:#1d1b29; --muted:#5f5b72; --line:#e4e1ee; --bg:#f7f6fb; --card:#fff; --brand:#5a12c4;
+          --bad:#b42318; --bad-bg:#fdecec; --warn:#8a5300; --warn-bg:#fff4e0; --ok:#1f6b33; --ok-bg:#eaf6ec;
+          --info:#1d4ed8; --info-bg:#e8efff; }
+  * { box-sizing: border-box; }
+  body { margin:0; font:14px/1.45 system-ui,-apple-system,"Segoe UI",sans-serif; color:var(--ink); background:var(--bg); }
+  header { background:var(--brand); color:#fff; padding:14px 24px; display:flex; align-items:center; gap:16px; flex-wrap:wrap; }
+  header h1 { font-size:18px; margin:0; } header .tag { opacity:.85; font-size:13px; }
+  header .status { margin-left:auto; font-size:12px; opacity:.9; }
+  nav { display:flex; gap:4px; padding:0 24px; background:#fff; border-bottom:1px solid var(--line); overflow-x:auto; }
+  nav button { border:0; background:none; padding:12px 14px; font:inherit; color:var(--muted); cursor:pointer; border-bottom:3px solid transparent; white-space:nowrap; }
+  nav button.active { color:var(--brand); border-bottom-color:var(--brand); font-weight:600; }
+  main { padding:20px 24px; max-width:1280px; margin:0 auto; }
+  section.tab { display:none; } section.tab.active { display:block; }
+  .grid { display:grid; gap:16px; } .two { grid-template-columns: 1fr 1fr; } .kpis { grid-template-columns: repeat(6, 1fr); }
+  @media (max-width: 900px) { .two, .kpis { grid-template-columns: 1fr 1fr; } }
+  .panel { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:16px; }
+  .panel h2 { font-size:15px; margin:0 0 10px; } .panel p.hint { color:var(--muted); margin:0 0 10px; font-size:13px; }
+  .kpi { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:12px 14px; }
+  .kpi b { display:block; font-size:24px; } .kpi span { color:var(--muted); font-size:12px; }
+  label { display:block; font-size:12px; color:var(--muted); margin:8px 0 4px; }
+  input, select, textarea { width:100%; padding:8px; border:1px solid var(--line); border-radius:8px; font:inherit; background:#fff; color:var(--ink); }
+  textarea { min-height:140px; font-family:ui-monospace,Consolas,monospace; font-size:12.5px; }
+  .row { display:flex; gap:8px; flex-wrap:wrap; align-items:end; } .row > * { flex:1; min-width:140px; }
+  button.btn { border:1px solid var(--brand); background:var(--brand); color:#fff; padding:8px 14px; border-radius:8px; font:inherit; cursor:pointer; }
+  button.btn.secondary { background:#fff; color:var(--brand); } button.btn.danger { border-color:var(--bad); background:#fff; color:var(--bad); }
+  button.btn:disabled { opacity:.5; cursor:wait; } button.small { padding:4px 8px; font-size:12px; }
+  table { width:100%; border-collapse:collapse; font-size:13px; } th, td { text-align:left; padding:8px 6px; border-bottom:1px solid var(--line); vertical-align:top; }
+  th { color:var(--muted); font-weight:600; font-size:12px; }
+  .badge { display:inline-block; padding:2px 8px; border-radius:999px; font-size:12px; font-weight:600; white-space:nowrap; }
+  .broken, .BLOCK, .fail { background:var(--bad-bg); color:var(--bad); } .cant_keep, .due_soon { background:var(--warn-bg); color:var(--warn); }
+  .kept, .PASS, .pass { background:var(--ok-bg); color:var(--ok); } .open { background:var(--info-bg); color:var(--info); } .dismissed { background:#eee; color:#666; }
+  .muted { color:var(--muted); } .small { font-size:12px; } .quote { font-style:italic; color:var(--muted); }
+  pre { background:#1d1b29; color:#f4f2ff; padding:12px; border-radius:8px; overflow:auto; font-size:12px; max-height:360px; white-space:pre-wrap; }
+  pre .add { color:#7ee2a8; } pre .del { color:#ff9c9c; }
+  .steps { display:grid; grid-template-columns: repeat(6, 1fr); gap:8px; margin-bottom:16px; }
+  @media (max-width: 900px) { .steps { grid-template-columns: 1fr 1fr; } }
+  .step { background:#fff; border:1px solid var(--line); border-radius:10px; padding:10px; }
+  .step b { display:block; font-size:12px; color:var(--brand); } .step button { width:100%; margin-top:6px; }
+  .gate { padding:14px; border-radius:10px; font-size:16px; font-weight:700; margin-bottom:10px; }
+  iframe { width:100%; height:420px; border:1px solid var(--line); border-radius:10px; background:#fff; }
+  .toast { position:fixed; bottom:16px; right:16px; background:var(--ink); color:#fff; padding:10px 14px; border-radius:8px; display:none; max-width:420px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>TrustLoop</h1>
+  <span class="tag">Every promise to a customer, from a person or an AI, kept.</span>
+  <span class="status" id="status">…</span>
+</header>
+<nav>
+  <button data-tab="promises" class="active">Promise Keeper</button>
+  <button data-tab="card">Agent card</button>
+  <button data-tab="mender">Mender</button>
+  <button data-tab="log">Live tool log</button>
+</nav>
+<main>
+  <!-- Promise Keeper -->
+  <section class="tab active" id="tab-promises">
+    <div class="grid kpis" id="kpis"></div>
+    <div class="grid two" style="margin-top:16px">
+      <div class="panel">
+        <h2>Add a conversation</h2>
+        <p class="hint">Paste a chat or call transcript ("Agent: …" / "Customer: …"). TrustLoop extracts every promise and checks it against bank policy.</p>
+        <div class="row">
+          <div><label>Agent name</label><input id="tx-agent" value="Ravi"></div>
+          <div><label>Agent type</label><select id="tx-type"><option value="human">Human agent</option><option value="ai">AI agent</option></select></div>
+          <div><label>Customer</label><select id="tx-phone" class="customers"></select></div>
+        </div>
+        <label>Transcript</label>
+        <textarea id="tx-text" placeholder="Agent: I'll call you back on Thursday…"></textarea>
+        <div class="row" style="margin-top:10px">
+          <button class="btn" id="tx-send">Extract promises</button>
+          <button class="btn secondary" id="tx-samples">Load the two demo conversations</button>
+        </div>
+      </div>
+      <div class="panel">
+        <h2>Demo clock</h2>
+        <p class="hint">Move time forward to watch promises come due and break.</p>
+        <div id="clock" style="font-size:18px;font-weight:600"></div>
+        <div class="row" style="margin-top:10px">
+          <button class="btn secondary" data-advance="6">+6 hours</button>
+          <button class="btn secondary" data-advance="24">+1 day</button>
+          <button class="btn secondary" data-advance="72">+3 days</button>
+          <button class="btn danger" id="clock-reset">Back to now</button>
+        </div>
+        <div class="row" style="margin-top:8px"><button class="btn danger small" id="demo-reset">Reset the whole demo (clears promises, logs, patches)</button></div>
+        <h2 style="margin-top:18px">Something happened at the bank</h2>
+        <p class="hint">Promises are kept automatically when the matching event arrives.</p>
+        <div class="row">
+          <div><label>Customer</label><select id="ev-customer" class="customers-id"></select></div>
+          <div><label>Event</label><select id="ev-kind">
+            <option value="callback_completed">Callback completed</option>
+            <option value="document_sent">Document emailed</option>
+            <option value="refund_paid">Refund paid</option>
+            <option value="replacement_delivered">Replacement card delivered</option>
+          </select></div>
+          <div><button class="btn secondary" id="ev-send">Record event</button></div>
+        </div>
+      </div>
+    </div>
+    <div class="panel" style="margin-top:16px">
+      <h2>Promises</h2>
+      <table><thead><tr><th>Status</th><th>Customer</th><th>Promise</th><th>Due</th><th>Made by</th><th>Policy</th><th></th></tr></thead>
+      <tbody id="promises"></tbody></table>
+    </div>
+    <div class="panel" style="margin-top:16px">
+      <h2>Reminders and customer messages</h2>
+      <table><thead><tr><th>When</th><th>To</th><th>Message</th><th>Delivery</th></tr></thead><tbody id="messages"></tbody></table>
+    </div>
+  </section>
+
+  <!-- Agent card -->
+  <section class="tab" id="tab-card">
+    <div class="panel">
+      <h2>What the agent sees when the customer gets in touch</h2>
+      <p class="hint">This is the page Workspace Designer embeds: <code id="card-url"></code></p>
+      <div class="row"><div><label>Customer</label><select id="card-phone" class="customers"></select></div></div>
+      <iframe id="card-frame" title="Agent card"></iframe>
+    </div>
+  </section>
+
+  <!-- Mender -->
+  <section class="tab" id="tab-mender">
+    <div class="steps">
+      <div class="step"><b>0 · Traffic</b><span class="small muted">No live Talkdesk traffic yet? Replay v1's five weak spots.</span><button class="btn secondary small" id="m-sim">Replay v1 chats</button></div>
+      <div class="step"><b>1 · Capture</b><span class="small muted">Find failures in tool logs, outcomes, promises, transcripts.</span><button class="btn small" id="m-capture">Capture failures</button></div>
+      <div class="step"><b>2–3 · Codify</b><span class="small muted">Two test cases per cluster plus 6 golden cases.</span><button class="btn small" id="m-cases">Build cases</button></div>
+      <div class="step"><b>4 · Propose</b><span class="small muted">Smallest patch; every change cites its cluster.</span><button class="btn small" id="m-patch">Draft fix</button></div>
+      <div class="step"><b>5 · Verify</b><span class="small muted">Run old vs new on every case.</span><button class="btn small" id="m-eval">Evaluate</button></div>
+      <div class="step"><b>Try a bad fix</b><span class="small muted">"Always escalate" — watch the gate block it.</span><button class="btn danger small" id="m-bad">Over-eager patch</button></div>
+    </div>
+    <div class="grid two">
+      <div class="panel"><h2>Failure clusters</h2><div id="clusters" class="muted">Nothing captured yet.</div></div>
+      <div class="panel"><h2>Proposed patch</h2><div id="patch" class="muted">No patch yet.</div></div>
+    </div>
+    <div class="panel" style="margin-top:16px"><h2>Regression gate</h2><div id="gate" class="muted">Evaluate a patch to see the gate decision.</div></div>
+    <div class="panel" style="margin-top:16px">
+      <h2>Agent instructions</h2>
+      <p class="hint">After approval, paste the newest version into the CardCare orchestration in Talkdesk as v2.</p>
+      <div id="instructions"></div>
+      <div class="row" style="margin-top:10px"><a class="btn secondary" id="cases-csv" href="#" style="text-decoration:none;text-align:center">Download cases (CSV) for Talkdesk Datasets</a></div>
+    </div>
+  </section>
+
+  <!-- Live log -->
+  <section class="tab" id="tab-log">
+    <div class="panel">
+      <h2>Live MCP tool calls from CardCare</h2>
+      <p class="hint">Every call Talkdesk's AI agent makes to our MCP server, newest first. Refreshes every 5 seconds.</p>
+      <table><thead><tr><th>Time</th><th>Session</th><th>Tool</th><th>Arguments</th><th>Result</th></tr></thead><tbody id="log"></tbody></table>
+    </div>
+  </section>
+</main>
+<div class="toast" id="toast"></div>
+
+<script>
+const params = new URLSearchParams(location.search);
+if (params.get("key")) { try { localStorage.setItem("trustloopKey", params.get("key")); } catch (e) {} }
+let KEY = params.get("key") || ""; try { KEY = KEY || localStorage.getItem("trustloopKey") || ""; } catch (e) {}
+let currentPatch = null;
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const when = (iso) => iso ? new Date(iso).toLocaleString("en-IN", {weekday:"short", day:"numeric", month:"short", hour:"2-digit", minute:"2-digit", timeZone:"Asia/Kolkata"}) : "";
+const LABEL = {open:"Open", due_soon:"Due soon", broken:"Broken", cant_keep:"Can't be kept", kept:"Kept", dismissed:"Dismissed"};
+
+async function api(path, options = {}) {
+  const headers = {"Content-Type": "application/json", ...(KEY ? {"Authorization": "Bearer " + KEY} : {})};
+  const res = await fetch(path, {...options, headers});
+  const body = res.headers.get("content-type")?.includes("json") ? await res.json() : await res.text();
+  if (!res.ok) throw new Error(body?.detail || res.statusText);
+  return body;
+}
+function toast(msg) { const t = $("toast"); t.textContent = msg; t.style.display = "block"; clearTimeout(t._h); t._h = setTimeout(() => t.style.display = "none", 4000); }
+async function busy(btn, fn) { btn.disabled = true; try { await fn(); } catch (e) { toast("Error: " + e.message); } finally { btn.disabled = false; } }
+
+document.querySelectorAll("nav button").forEach((b) => b.onclick = () => {
+  document.querySelectorAll("nav button").forEach((x) => x.classList.toggle("active", x === b));
+  document.querySelectorAll("section.tab").forEach((s) => s.classList.toggle("active", s.id === "tab-" + b.dataset.tab));
+  if (b.dataset.tab === "card") renderCard();
+  if (b.dataset.tab === "mender") refreshMender();
+  if (b.dataset.tab === "log") refreshLog();
+});
+
+async function loadCustomers() {
+  const list = await api("/api/customers");
+  document.querySelectorAll("select.customers").forEach((s) => s.innerHTML = list.map((c) => `<option value="${esc(c.phone)}">${esc(c.name)} · ${esc(c.phone)}</option>`).join(""));
+  document.querySelectorAll("select.customers-id").forEach((s) => s.innerHTML = list.map((c) => `<option value="${esc(c.customer_id)}">${esc(c.name)}</option>`).join(""));
+  $("tx-phone").value = "+919845001009"; $("card-phone").value = "+919845001009"; $("ev-customer").value = "C009";
+}
+
+async function refreshStatus() {
+  const h = await api("/health");
+  const provider = {claude: "Claude", gemini: "Gemini"}[h.llm];
+  $("status").textContent = `${provider ? provider + ": " + h.model : "Offline engine (no API key)"} · ${h.webhook ? "messages via webhook" : "messages queued"}`;
+}
+
+async function refreshPromises() {
+  const [board, rows, msgs] = await Promise.all([api("/api/dashboard"), api("/api/promises"), api("/api/messages")]);
+  const t = board.totals;
+  $("kpis").innerHTML = [["Open", (t.open||0)], ["Due soon", t.due_soon||0], ["Broken", t.broken||0], ["Can't be kept", t.cant_keep||0], ["Kept", t.kept||0], ["Repeat contacts after a broken promise", board.repeat_contacts_after_broken]]
+    .map(([k, v]) => `<div class="kpi"><b>${v}</b><span>${k}</span></div>`).join("");
+  $("clock").textContent = when(board.as_of) + (board.clock_offset_hours ? `  (+${Math.round(board.clock_offset_hours)}h)` : "");
+  $("promises").innerHTML = rows.length ? rows.map((p) => `<tr>
+      <td><span class="badge ${p.status}">${LABEL[p.status] || p.status}</span></td>
+      <td>${esc(p.customer_name || "—")}</td>
+      <td><b>${esc(p.description)}</b><div class="quote">"${esc(p.quote)}"</div></td>
+      <td>${when(p.due_at)}${p.no_date ? '<div class="small muted">no date given</div>' : ""}</td>
+      <td>${esc(p.made_by)}<div class="small muted">${p.agent_type === "ai" ? "AI agent" : "Human"}</div></td>
+      <td class="small">${esc(p.policy_violation) || '<span class="muted">OK</span>'}</td>
+      <td>${["kept","dismissed"].includes(p.status) ? "" : `<button class="btn secondary small" onclick="keep(${p.id})">Mark kept</button> <button class="btn danger small" onclick="dismissPromise(${p.id})">Dismiss</button>`}</td></tr>`).join("")
+    : `<tr><td colspan="7" class="muted">No promises yet. Add a conversation or load the demo conversations.</td></tr>`;
+  $("messages").innerHTML = msgs.length ? msgs.map((m) => `<tr><td class="small">${when(m.at)}</td><td>${esc(m.audience)}</td><td>${esc(m.body)}</td><td><span class="badge ${m.status === "failed" ? "fail" : m.status === "sent" ? "pass" : "open"}">${esc(m.status)}</span></td></tr>`).join("")
+    : `<tr><td colspan="4" class="muted">Nothing yet.</td></tr>`;
+}
+window.keep = (id) => api(`/api/promises/${id}/kept`, {method: "POST", body: JSON.stringify({note: "Marked done in console"})}).then(refreshPromises);
+window.dismissPromise = (id) => api(`/api/promises/${id}/dismiss`, {method: "POST"}).then(refreshPromises);
+
+$("tx-send").onclick = (e) => busy(e.target, async () => {
+  const r = await api("/api/transcripts", {method: "POST", body: JSON.stringify({text: $("tx-text").value, agent_name: $("tx-agent").value, agent_type: $("tx-type").value, phone: $("tx-phone").value})});
+  toast(`Found ${r.promises.length} promise(s) using the ${r.engine} engine.`); $("tx-text").value = ""; refreshPromises();
+});
+$("tx-samples").onclick = (e) => busy(e.target, async () => { const r = await api("/api/demo/load-samples", {method: "POST"}); toast(r.map((x) => `${x.file}: ${x.promises}`).join(" · ")); refreshPromises(); });
+document.querySelectorAll("[data-advance]").forEach((b) => b.onclick = () => busy(b, async () => { await api("/api/clock", {method: "POST", body: JSON.stringify({advance_hours: +b.dataset.advance})}); refreshPromises(); }));
+$("clock-reset").onclick = (e) => busy(e.target, async () => { await api("/api/clock", {method: "POST", body: JSON.stringify({reset: true})}); refreshPromises(); });
+$("demo-reset").onclick = (e) => { if (confirm("Clear all promises, logs, failures and patches?")) busy(e.target, async () => { await api("/api/demo/reset", {method: "POST"}); toast("Demo reset"); refreshPromises(); }); };
+$("ev-send").onclick = (e) => busy(e.target, async () => { await api("/api/events", {method: "POST", body: JSON.stringify({customer_id: $("ev-customer").value, kind: $("ev-kind").value})}); toast("Event recorded"); refreshPromises(); });
+
+function renderCard() {
+  const url = `/card?phone=${encodeURIComponent($("card-phone").value)}`;
+  $("card-url").textContent = location.origin + url + "&…"; $("card-frame").src = url;
+}
+$("card-phone").onchange = renderCard;
+
+function diffHtml(diff) {
+  return esc(diff).split("\n").map((l) => l.startsWith("+") && !l.startsWith("+++") ? `<span class="add">${l}</span>` : l.startsWith("-") && !l.startsWith("---") ? `<span class="del">${l}</span>` : l).join("\n");
+}
+async function refreshMender() {
+  const [clusters, patches, instructions] = await Promise.all([api("/api/mender/clusters"), api("/api/mender/patches"), api("/api/mender/instructions")]);
+  $("clusters").innerHTML = clusters.length ? clusters.map((c) => `<div style="margin-bottom:12px"><span class="badge broken">${c.count}×</span> <b>${esc(c.label)}</b>
+     <div class="small muted">${esc(c.failure_type)} · ${c.sessions.length} session(s)</div>
+     <div class="small">${c.examples.map((x) => "• " + esc(x)).join("<br>")}</div>
+     <div class="small"><b>Root cause:</b> ${esc(c.root_cause)}</div></div>`).join("") : "Nothing captured yet.";
+  currentPatch = patches.find((p) => p.kind === "fix") || patches[0] || null;
+  renderPatch(patches[0] || null);
+  $("instructions").innerHTML = instructions.map((v, i) => `<details ${i === 0 ? "open" : ""}><summary><b>v${v.version}</b> · ${esc(v.label)}</summary><pre>${esc(v.text)}</pre></details>`).join("");
+}
+function renderPatch(p) {
+  if (!p) { $("patch").innerHTML = "No patch yet."; return; }
+  $("patch").innerHTML = `<div class="small muted">Patch #${p.id} · ${esc(p.kind)} · drafted by ${esc(p.source)} · <span class="badge ${p.status === "passed" || p.status === "approved" ? "pass" : p.status === "blocked" ? "fail" : "open"}">${esc(p.status)}</span></div>
+    <ul class="small">${p.changes.map((c) => `<li><b>${esc(c.failure_type)}:</b> ${esc(c.change)}</li>`).join("")}</ul><pre>${diffHtml(p.diff)}</pre>`;
+}
+function renderGate(r) {
+  const g = r.gate;
+  const rows = (r.before || []).map((b) => { const a = r.after.find((x) => x.case_id === b.case_id);
+    return `<tr><td>${esc(b.case_id)}</td><td>${esc(b.kind)}</td><td><span class="badge ${b.passed ? "pass" : "fail"}">${b.passed ? "pass" : "fail"}</span></td>
+      <td><span class="badge ${a.passed ? "pass" : "fail"}">${a.passed ? "pass" : "fail"}</span></td><td class="small">${esc(a.reasons.join("; ") || a.reply.slice(0, 140))}</td></tr>`; }).join("");
+  $("gate").innerHTML = `<div class="gate ${g.decision}">${g.decision === "PASS" ? "PASS: safe to publish" : "BLOCKED: this patch would ship a regression"}</div>
+    <div>Score <b>${g.score_before}</b> → <b>${g.score_after}</b> · fixed ${g.fixed.length} · still failing ${g.still_failing.length} · golden regressions ${g.regressions.length} · engine: ${esc(r.engine)}</div>
+    ${g.reasons.length ? `<ul>${g.reasons.map((x) => `<li>${esc(x)}</li>`).join("")}</ul>` : ""}
+    ${g.decision === "PASS" ? `<button class="btn" onclick="approvePatch(${r.patch_id})">Approve and create the next version</button>` : ""}
+    ${rows ? `<table style="margin-top:10px"><thead><tr><th>Case</th><th>Kind</th><th>Before</th><th>After</th><th>Notes (after)</th></tr></thead><tbody>${rows}</tbody></table>` : ""}`;
+}
+window.approvePatch = (id) => api(`/api/mender/patches/${id}/approve`, {method: "POST"}).then((v) => { toast(`Created v${v.version}. Paste it into Talkdesk.`); refreshMender(); });
+
+$("m-sim").onclick = (e) => busy(e.target, async () => { const r = await api("/api/mender/simulate-traffic", {method: "POST"}); toast(`Replayed ${r.length} conversations through v1`); });
+$("m-capture").onclick = (e) => busy(e.target, async () => { const r = await api("/api/mender/capture", {method: "POST"}); toast(`${r.new_failures} new failure(s)`); refreshMender(); });
+$("m-cases").onclick = (e) => busy(e.target, async () => { const r = await api("/api/mender/cases", {method: "POST"}); toast(`${r.length} cases (${r.filter((c) => c.kind === "golden").length} golden)`); });
+$("m-patch").onclick = (e) => busy(e.target, async () => { const p = await api("/api/mender/patches", {method: "POST", body: JSON.stringify({kind: "fix"})}); currentPatch = p; renderPatch(p); });
+$("m-bad").onclick = (e) => busy(e.target, async () => { const p = await api("/api/mender/patches", {method: "POST", body: JSON.stringify({kind: "overeager"})}); renderPatch(p); toast("Evaluating the over-eager patch…"); renderGate(await api(`/api/mender/patches/${p.id}/evaluate`, {method: "POST"})); refreshMender(); });
+$("m-eval").onclick = (e) => busy(e.target, async () => { if (!currentPatch) throw new Error("Draft a fix first"); toast("Running every case on both versions…"); renderGate(await api(`/api/mender/patches/${currentPatch.id}/evaluate`, {method: "POST"})); refreshMender(); });
+$("cases-csv").onclick = async (ev) => { ev.preventDefault(); const text = await api("/api/mender/cases.csv"); const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([text], {type: "text/csv"})); a.download = "trustloop_cases.csv"; a.click(); };
+
+async function refreshLog() {
+  const rows = await api("/api/tool-calls?limit=100");
+  $("log").innerHTML = rows.length ? rows.map((r) => `<tr><td class="small">${when(r.at)}</td><td class="small">${esc(r.session_id)}</td><td><b>${esc(r.tool)}</b></td><td class="small"><code>${esc(r.args)}</code></td><td class="small"><code>${esc(r.result.slice(0, 220))}</code></td></tr>`).join("")
+    : `<tr><td colspan="5" class="muted">No calls yet. Chat with CardCare in Talkdesk, or replay v1 chats in the Mender tab.</td></tr>`;
+}
+
+(async () => {
+  try { await Promise.all([refreshStatus(), loadCustomers()]); await refreshPromises(); }
+  catch (e) { toast("Error: " + e.message + (e.message.includes("API key") ? " — open this page with ?key=YOUR_KEY" : "")); }
+  setInterval(() => { if ($("tab-promises").classList.contains("active")) refreshPromises().catch(() => {}); if ($("tab-log").classList.contains("active")) refreshLog().catch(() => {}); }, 5000);
+})();
+</script>
+</body>
+</html>

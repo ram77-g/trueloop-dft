@@ -1,0 +1,4 @@
+Customer: Hi, I lost my debit card yesterday and I need a new one.
+CardCare: I'm sorry to hear that, Meera. I've ordered a replacement card for you. Your new card will arrive in 2 days.
+Customer: Great, thanks.
+CardCare: You're welcome! Is there anything else I can help you with?

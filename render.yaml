@@ -1,0 +1,17 @@
+services:
+  - type: web
+    name: trustloop-dft
+    runtime: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn trustloop.app:create_app --factory --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.7
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: TRUSTLOOP_API_KEY
+        sync: false
+      - key: TRUSTLOOP_WEBHOOK_URL
+        sync: false
