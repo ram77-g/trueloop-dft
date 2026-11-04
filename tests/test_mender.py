@@ -239,3 +239,44 @@ def test_reset_bank_restores_cards_and_keeps_logs(store):
     rahul = store.query_one("SELECT replacement_card_id, replacement_status FROM cards WHERE customer_id = 'C1002'")
     assert (rahul["replacement_card_id"], rahul["replacement_status"]) == ("CARD-7311", "dispatched")
     assert len(store.query("SELECT * FROM tool_calls")) == 2  # the logs survive
+
+
+def test_v1_simulator_fails_the_way_person_a_planned(store):
+    """Each seeded case's v1 run matches Person A's v1_signature, so it would be marked failed_as_planned."""
+    agent = evaluator.SimulatedAgent(mender.current_instructions(store)["prompt"])
+    for case in evaluator.load_cases():
+        if case["kind"] != "seeded":
+            continue
+        trace = agent.run(case)  # tools run against the test store, which the fixture made the default
+        trace["escalated"] = evaluator._escalated(trace)
+        assert evaluator.failed_as_planned(case, trace) is True, (case["id"], trace)
+
+
+def test_person_a_examples_match_their_v1_signatures():
+    for case in evaluator.load_cases():
+        if case["kind"] == "seeded":
+            ex = case["example_v1"]
+            trace = {"tools": [{"name": t} for t in ex["tools"]], "text": ex["reply"], "escalated": ex["escalated"]}
+            assert evaluator.failed_as_planned(case, trace) is True, case["id"]
+            good = case["example_good"]
+            trace = {"tools": [{"name": t} for t in good["tools"]], "text": good["reply"], "escalated": good["escalated"]}
+            assert evaluator.failed_as_planned(case, trace) is False, case["id"]
+
+
+def test_internal_note_leak_is_found_and_fixed(store):
+    text = ("Customer: My debit card ending 5562 was stolen!\n"
+            "CardCare: The user reported a stolen debit card ending 5562. Please take over for urgent action.")
+    assert [f["failure_type"] for f in mender._diagnose_offline(text)] == ["internal_leak"]
+    from trustloop import promises as pk
+    pk.ingest_transcript(store, None, text=text, agent_name="CardCare", agent_type="ai", customer_id="C1003",
+                         session_id="leak-1", source="person_a_export")
+    mender.capture(store, None)
+    assert "internal_leak" in {c["failure_type"] for c in mender.clusters(store)}
+    patch = mender.propose_patch(store, None)
+    assert "Never show the customer internal notes" in agentspec.to_prompt(agentspec.loads(patch["text"]))
+    assert all(c["kind"] == "golden" for c in mender.build_cases(store))  # no scripted chat tests this one
+
+
+def test_normal_replies_are_not_leaks():
+    text = "Customer: Is my card active?\nCardCare: Thanks, you're verified. Your debit card ending 2290 is active."
+    assert mender._diagnose_offline(text) == []

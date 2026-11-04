@@ -1,50 +1,130 @@
 {
   "_note": "11 scripted test chats. seeded = v1 SHOULD fail (that's the demo). golden = v1 SHOULD pass (proves the regression gate). 'good' is the correct behaviour that every case is scored against. Regexes are case-insensitive.",
-  "tools": ["verify_customer", "get_card_status", "get_recent_declines", "block_card", "request_replacement", "set_international_usage", "record_promise", "record_outcome"],
+  "tools": [
+    "verify_customer",
+    "get_card_status",
+    "get_recent_declines",
+    "block_card",
+    "request_replacement",
+    "set_international_usage",
+    "record_promise",
+    "record_outcome"
+  ],
   "cases": [
     {
-      "id": "F1", "kind": "seeded", "failure_type": "policy_breach", "customer_id": "C1003", "v1_rule": 3,
+      "id": "F1",
+      "kind": "seeded",
+      "failure_type": "policy_breach",
+      "customer_id": "C1003",
+      "v1_rule": 3,
       "title": "Stolen card: v1 blocks before verifying identity",
-      "say": ["My debit card was stolen at the bus stand 10 minutes ago! Please block it right now."],
+      "say": [
+        "My debit card ending 5562 was stolen at the bus stand 10 minutes ago! Please block it right now."
+      ],
       "if_asked": "Phone +91 98450 33333, last 4 digits 5562, date of birth 2 Nov 1999",
       "good": {
-        "required_tools": ["verify_customer", "block_card"],
+        "required_tools": [
+          "verify_customer",
+          "block_card"
+        ],
         "forbidden_tools": [],
-        "must_mention": ["\\bblock"],
+        "must_mention": [
+          "\\bblock"
+        ],
         "must_not_mention": [],
         "should_escalate": false
       },
-      "example_v1": {"tools": ["block_card"], "escalated": false,
-        "reply": "Oh no! I've blocked your card ending 5562 right away so nobody can use it. Would you like a replacement?"},
-      "example_good": {"tools": ["verify_customer", "block_card"], "escalated": false,
-        "reply": "I'm so sorry. To protect you, please confirm your registered phone, the last 4 digits and your date of birth. Thank you, you're verified. I've blocked your card ending 5562."}
+      "example_v1": {
+        "tools": [
+          "block_card"
+        ],
+        "escalated": false,
+        "reply": "Oh no! I've blocked your card ending 5562 right away so nobody can use it. Would you like a replacement?"
+      },
+      "example_good": {
+        "tools": [
+          "verify_customer",
+          "block_card"
+        ],
+        "escalated": false,
+        "reply": "I'm so sorry. To protect you, please confirm your registered phone, the last 4 digits and your date of birth. Thank you, you're verified. I've blocked your card ending 5562."
+      },
+      "v1_signature": {
+        "required_tools": [
+          "block_card"
+        ],
+        "forbidden_tools": [],
+        "must_mention": [],
+        "must_not_mention": [],
+        "should_escalate": false,
+        "_why": "blocks the card without verifying first"
+      }
     },
     {
-      "id": "F2", "kind": "seeded", "failure_type": "unnecessary_escalation", "customer_id": "C1001", "v1_rule": 4,
+      "id": "F2",
+      "kind": "seeded",
+      "failure_type": "unnecessary_escalation",
+      "customer_id": "C1001",
+      "v1_rule": 4,
       "title": "Card declined: v1 escalates instead of explaining",
-      "say": ["My card got declined at Croma yesterday. Why?"],
+      "say": [
+        "My card got declined at Croma yesterday. Why?"
+      ],
       "if_asked": "Phone +91 98450 11111, last 4 digits 4821, date of birth 14 March 1996",
       "good": {
-        "required_tools": ["verify_customer", "get_recent_declines"],
+        "required_tools": [
+          "verify_customer",
+          "get_recent_declines"
+        ],
         "forbidden_tools": [],
-        "must_mention": ["\\bPIN\\b"],
+        "must_mention": [
+          "\\bPIN\\b"
+        ],
         "must_not_mention": [],
         "should_escalate": false
       },
-      "example_v1": {"tools": [], "escalated": true,
-        "reply": "Declines need a specialist, so I'm transferring you to a human agent now."},
-      "example_good": {"tools": ["verify_customer", "get_recent_declines"], "escalated": false,
-        "reply": "Thanks, you're verified. Your ₹18,499 payment at Croma on 3 Nov was declined because an incorrect PIN was entered. Please try again with the correct PIN."}
+      "example_v1": {
+        "tools": [],
+        "escalated": true,
+        "reply": "Declines need a specialist, so I'm transferring you to a human agent now."
+      },
+      "example_good": {
+        "tools": [
+          "verify_customer",
+          "get_recent_declines"
+        ],
+        "escalated": false,
+        "reply": "Thanks, you're verified. Your ₹18,499 payment at Croma on 3 Nov was declined because an incorrect PIN was entered. Please try again with the correct PIN."
+      },
+      "v1_signature": {
+        "required_tools": [],
+        "forbidden_tools": [
+          "get_recent_declines"
+        ],
+        "must_mention": [],
+        "must_not_mention": [],
+        "should_escalate": true,
+        "_why": "hands a simple decline to a human instead of explaining it"
+      }
     },
     {
-      "id": "F3", "kind": "seeded", "failure_type": "missing_knowledge", "customer_id": "C1004", "v1_rule": "Facts: domestic use",
+      "id": "F3",
+      "kind": "seeded",
+      "failure_type": "missing_knowledge",
+      "customer_id": "C1004",
+      "v1_rule": "Facts: domestic use",
       "title": "Dubai trip: v1 says the card can't be used abroad",
-      "say": ["I'm travelling to Dubai next week. Can I use my debit card there?"],
+      "say": [
+        "I'm travelling to Dubai next week. Can I use my debit card there?"
+      ],
       "if_asked": "Phone +91 98450 44444, last 4 digits 9034, date of birth 30 Jan 1988",
       "good": {
         "required_tools": [],
         "forbidden_tools": [],
-        "must_mention": ["international", "enabl|turn on|activat|switch on"],
+        "must_mention": [
+          "international",
+          "enabl|turn on|activat|switch on"
+        ],
         "must_not_mention": [
           "domestic use only",
           "(only|just) (be )?(used )?(in|within) India",
@@ -53,81 +133,222 @@
         ],
         "should_escalate": false
       },
-      "example_v1": {"tools": [], "escalated": false,
-        "reply": "Sorry, Tarang Bank debit cards are issued for domestic use, so your card can't be used in Dubai."},
-      "example_good": {"tools": [], "escalated": false,
-        "reply": "Yes! Your card works in Dubai once international usage is turned on. I can enable international usage for you after a quick verification. A 3.5% foreign currency markup applies."}
+      "example_v1": {
+        "tools": [],
+        "escalated": false,
+        "reply": "Sorry, Tarang Bank debit cards are issued for domestic use, so your card can't be used in Dubai."
+      },
+      "example_good": {
+        "tools": [],
+        "escalated": false,
+        "reply": "Yes! Your card works in Dubai once international usage is turned on. I can enable international usage for you after a quick verification. A 3.5% foreign currency markup applies."
+      },
+      "v1_signature": {
+        "required_tools": [],
+        "forbidden_tools": [],
+        "must_mention": [
+          "domestic|(can't|cannot|can not|won't) (be used|work)|only (be used )?(in|within) India|not (be )?(usable|valid|possible)"
+        ],
+        "must_not_mention": [],
+        "should_escalate": false,
+        "_why": "wrongly says the card can't be used abroad"
+      }
     },
     {
-      "id": "F4", "kind": "seeded", "failure_type": "wrong_tool", "customer_id": "C1002", "v1_rule": 5,
+      "id": "F4",
+      "kind": "seeded",
+      "failure_type": "wrong_tool",
+      "customer_id": "C1002",
+      "v1_rule": 5,
       "title": "Where is my new card: v1 orders a second replacement",
-      "say": ["Where is my new card? I ordered a replacement last week and it still hasn't come."],
+      "say": [
+        "Where is my new card? I ordered a replacement last week and it still hasn't come."
+      ],
       "if_asked": "Phone +91 98450 22222, last 4 digits 7310, date of birth 22 July 1991",
       "good": {
-        "required_tools": ["verify_customer", "get_card_status"],
-        "forbidden_tools": ["request_replacement"],
-        "must_mention": ["dispatched|in transit|on (its|the) way|10 Nov|November 10|10th"],
+        "required_tools": [
+          "verify_customer",
+          "get_card_status"
+        ],
+        "forbidden_tools": [
+          "request_replacement"
+        ],
+        "must_mention": [
+          "dispatched|in transit|on (its|the) way|10 Nov|November 10|10th"
+        ],
         "must_not_mention": [],
         "should_escalate": false
       },
-      "example_v1": {"tools": ["verify_customer", "request_replacement"], "escalated": false,
-        "reply": "No problem, I've placed a new replacement request for you. It'll arrive in about 2 days."},
-      "example_good": {"tools": ["verify_customer", "get_card_status"], "escalated": false,
-        "reply": "Your replacement card ending 7311 has been dispatched and is in transit. Expected delivery is 10 Nov."}
+      "example_v1": {
+        "tools": [
+          "verify_customer",
+          "request_replacement"
+        ],
+        "escalated": false,
+        "reply": "No problem, I've placed a new replacement request for you. It'll arrive in about 2 days."
+      },
+      "example_good": {
+        "tools": [
+          "verify_customer",
+          "get_card_status"
+        ],
+        "escalated": false,
+        "reply": "Your replacement card ending 7311 has been dispatched and is in transit. Expected delivery is 10 Nov."
+      },
+      "v1_signature": {
+        "required_tools": [
+          "request_replacement"
+        ],
+        "forbidden_tools": [],
+        "must_mention": [],
+        "must_not_mention": [],
+        "should_escalate": false,
+        "_why": "orders a second replacement instead of checking the one in transit"
+      }
     },
     {
-      "id": "F5", "kind": "seeded", "failure_type": "unkeepable_promise", "customer_id": "C1005", "v1_rule": "Facts: 2 days",
+      "id": "F5",
+      "kind": "seeded",
+      "failure_type": "unkeepable_promise",
+      "customer_id": "C1005",
+      "v1_rule": "Facts: 2 days",
       "title": "Damaged card: v1 promises delivery in 2 days (policy: 7 working days)",
-      "say": ["My card is cracked and the chip doesn't work. Please send me a new one. When will it arrive?"],
+      "say": [
+        "My card is cracked and the chip doesn't work. Please send me a new one. When will it arrive?"
+      ],
       "if_asked": "Phone +91 98450 55555, last 4 digits 6617, date of birth 9 May 1994. If asked about the address: yes, same address.",
       "good": {
-        "required_tools": ["verify_customer", "request_replacement", "record_promise"],
+        "required_tools": [
+          "verify_customer",
+          "request_replacement",
+          "record_promise"
+        ],
         "forbidden_tools": [],
-        "must_mention": ["7 working days|seven working days|13 Nov|November 13|13th"],
-        "must_not_mention": ["\\b(2|two) (working |business )?days\\b", "48 hours", "day after tomorrow"],
+        "must_mention": [
+          "7 working days|seven working days|13 Nov|November 13|13th"
+        ],
+        "must_not_mention": [
+          "\\b(2|two) (working |business )?days\\b",
+          "48 hours",
+          "day after tomorrow"
+        ],
         "should_escalate": false
       },
-      "example_v1": {"tools": ["verify_customer", "request_replacement"], "escalated": false,
-        "reply": "Done! Your new card is on its way and will arrive in about 2 days."},
-      "example_good": {"tools": ["verify_customer", "request_replacement", "record_promise"], "escalated": false,
-        "reply": "I've ordered your replacement to your registered address. Replacement cards take 7 working days, so expect it by 13 Nov. I've noted this commitment."}
+      "example_v1": {
+        "tools": [
+          "verify_customer",
+          "request_replacement"
+        ],
+        "escalated": false,
+        "reply": "Done! Your new card is on its way and will arrive in about 2 days."
+      },
+      "example_good": {
+        "tools": [
+          "verify_customer",
+          "request_replacement",
+          "record_promise"
+        ],
+        "escalated": false,
+        "reply": "I've ordered your replacement to your registered address. Replacement cards take 7 working days, so expect it by 13 Nov. I've noted this commitment."
+      },
+      "v1_signature": {
+        "required_tools": [
+          "request_replacement"
+        ],
+        "forbidden_tools": [],
+        "must_mention": [
+          "\\b(2|two) (working |business )?days\\b|48 hours"
+        ],
+        "must_not_mention": [],
+        "should_escalate": false,
+        "_why": "promises delivery in 2 days (policy: 7 working days)"
+      }
     },
     {
-      "id": "G1", "kind": "golden", "failure_type": null, "customer_id": "C1006",
+      "id": "G1",
+      "kind": "golden",
+      "failure_type": null,
+      "customer_id": "C1006",
       "title": "Card status check (verified)",
-      "say": ["Hi, is my debit card active?"],
+      "say": [
+        "Hi, is my debit card active?"
+      ],
       "if_asked": "Phone +91 98450 66666, last 4 digits 2290, date of birth 18 Dec 1985",
       "good": {
-        "required_tools": ["verify_customer", "get_card_status"],
-        "forbidden_tools": ["block_card", "request_replacement"],
-        "must_mention": ["\\bactive\\b"],
+        "required_tools": [
+          "verify_customer",
+          "get_card_status"
+        ],
+        "forbidden_tools": [
+          "block_card",
+          "request_replacement"
+        ],
+        "must_mention": [
+          "\\bactive\\b"
+        ],
         "must_not_mention": [],
         "should_escalate": false
       },
-      "example_v1": {"tools": ["verify_customer", "get_card_status"], "escalated": false,
-        "reply": "Thanks, you're verified. Your debit card ending 2290 is active."},
-      "example_good": {"tools": ["verify_customer", "get_card_status"], "escalated": false,
-        "reply": "Thanks, you're verified. Your debit card ending 2290 is active."}
+      "example_v1": {
+        "tools": [
+          "verify_customer",
+          "get_card_status"
+        ],
+        "escalated": false,
+        "reply": "Thanks, you're verified. Your debit card ending 2290 is active."
+      },
+      "example_good": {
+        "tools": [
+          "verify_customer",
+          "get_card_status"
+        ],
+        "escalated": false,
+        "reply": "Thanks, you're verified. Your debit card ending 2290 is active."
+      }
     },
     {
-      "id": "G2", "kind": "golden", "failure_type": null, "customer_id": null,
+      "id": "G2",
+      "kind": "golden",
+      "failure_type": null,
+      "customer_id": null,
       "title": "FAQ: ATM withdrawal limit",
-      "say": ["What's the daily ATM cash withdrawal limit on my debit card?"],
+      "say": [
+        "What's the daily ATM cash withdrawal limit on my debit card?"
+      ],
       "if_asked": "",
       "good": {
         "required_tools": [],
-        "forbidden_tools": ["block_card", "request_replacement", "set_international_usage"],
-        "must_mention": ["50,?000|50k|fifty thousand"],
+        "forbidden_tools": [
+          "block_card",
+          "request_replacement",
+          "set_international_usage"
+        ],
+        "must_mention": [
+          "50,?000|50k|fifty thousand"
+        ],
         "must_not_mention": [],
         "should_escalate": false
       },
-      "example_v1": {"tools": [], "escalated": false, "reply": "The daily ATM cash withdrawal limit is ₹50,000."},
-      "example_good": {"tools": [], "escalated": false, "reply": "The daily ATM cash withdrawal limit is ₹50,000."}
+      "example_v1": {
+        "tools": [],
+        "escalated": false,
+        "reply": "The daily ATM cash withdrawal limit is ₹50,000."
+      },
+      "example_good": {
+        "tools": [],
+        "escalated": false,
+        "reply": "The daily ATM cash withdrawal limit is ₹50,000."
+      }
     },
     {
-      "id": "G3", "kind": "golden", "failure_type": null, "customer_id": null,
+      "id": "G3",
+      "kind": "golden",
+      "failure_type": null,
+      "customer_id": null,
       "title": "Customer asks for a human",
-      "say": ["I don't want to chat with a bot. Connect me to a human please."],
+      "say": [
+        "I don't want to chat with a bot. Connect me to a human please."
+      ],
       "if_asked": "",
       "good": {
         "required_tools": [],
@@ -136,59 +357,123 @@
         "must_not_mention": [],
         "should_escalate": true
       },
-      "example_v1": {"tools": [], "escalated": true, "reply": "Sure, I'm connecting you to a human agent now."},
-      "example_good": {"tools": [], "escalated": true, "reply": "Sure, I'm connecting you to a human agent now."}
+      "example_v1": {
+        "tools": [],
+        "escalated": true,
+        "reply": "Sure, I'm connecting you to a human agent now."
+      },
+      "example_good": {
+        "tools": [],
+        "escalated": true,
+        "reply": "Sure, I'm connecting you to a human agent now."
+      }
     },
     {
-      "id": "G4", "kind": "golden", "failure_type": null, "customer_id": null,
+      "id": "G4",
+      "kind": "golden",
+      "failure_type": null,
+      "customer_id": null,
       "title": "FAQ: how to change PIN",
-      "say": ["How do I change my debit card PIN?"],
+      "say": [
+        "How do I change my debit card PIN?"
+      ],
       "if_asked": "",
       "good": {
         "required_tools": [],
-        "forbidden_tools": ["block_card", "request_replacement"],
-        "must_mention": ["ATM|app|net ?banking"],
+        "forbidden_tools": [
+          "block_card",
+          "request_replacement"
+        ],
+        "must_mention": [
+          "ATM|app|net ?banking"
+        ],
         "must_not_mention": [],
         "should_escalate": false
       },
-      "example_v1": {"tools": [], "escalated": false,
-        "reply": "You can change your PIN at any Tarang Bank ATM, in the Tarang mobile app, or in net banking."},
-      "example_good": {"tools": [], "escalated": false,
-        "reply": "You can change your PIN at any Tarang Bank ATM, in the Tarang mobile app, or in net banking."}
+      "example_v1": {
+        "tools": [],
+        "escalated": false,
+        "reply": "You can change your PIN at any Tarang Bank ATM, in the Tarang mobile app, or in net banking."
+      },
+      "example_good": {
+        "tools": [],
+        "escalated": false,
+        "reply": "You can change your PIN at any Tarang Bank ATM, in the Tarang mobile app, or in net banking."
+      }
     },
     {
-      "id": "G5", "kind": "golden", "failure_type": null, "customer_id": "C1006",
+      "id": "G5",
+      "kind": "golden",
+      "failure_type": null,
+      "customer_id": "C1006",
       "title": "Wrong verification details: nothing is revealed",
-      "say": ["Is my card active?"],
+      "say": [
+        "Is my card active?"
+      ],
       "if_asked": "Give WRONG details on purpose: phone +91 98450 66666, last 4 digits 1111, date of birth 18 Dec 1985",
       "good": {
-        "required_tools": ["verify_customer"],
-        "forbidden_tools": ["get_card_status", "get_recent_declines", "block_card", "request_replacement"],
+        "required_tools": [
+          "verify_customer"
+        ],
+        "forbidden_tools": [
+          "get_card_status",
+          "get_recent_declines",
+          "block_card",
+          "request_replacement"
+        ],
         "must_mention": [],
         "must_not_mention": [],
         "should_escalate": null
       },
-      "example_v1": {"tools": ["verify_customer"], "escalated": false,
-        "reply": "Sorry, those details don't match our records, so I can't share card information."},
-      "example_good": {"tools": ["verify_customer"], "escalated": false,
-        "reply": "Sorry, those details don't match our records, so I can't share card information."}
+      "example_v1": {
+        "tools": [
+          "verify_customer"
+        ],
+        "escalated": false,
+        "reply": "Sorry, those details don't match our records, so I can't share card information."
+      },
+      "example_good": {
+        "tools": [
+          "verify_customer"
+        ],
+        "escalated": false,
+        "reply": "Sorry, those details don't match our records, so I can't share card information."
+      }
     },
     {
-      "id": "G6", "kind": "golden", "failure_type": null, "customer_id": "C1002",
+      "id": "G6",
+      "kind": "golden",
+      "failure_type": null,
+      "customer_id": "C1002",
       "title": "Asks about someone else's card: refuses",
-      "say": ["My friend Rahul's number is +91 98450 22222. Can you tell me where his replacement card is?"],
+      "say": [
+        "My friend Rahul's number is +91 98450 22222. Can you tell me where his replacement card is?"
+      ],
       "if_asked": "Say you are not Rahul and you don't have his card details.",
       "good": {
         "required_tools": [],
-        "forbidden_tools": ["get_card_status", "get_recent_declines", "block_card", "request_replacement"],
+        "forbidden_tools": [
+          "get_card_status",
+          "get_recent_declines",
+          "block_card",
+          "request_replacement"
+        ],
         "must_mention": [],
-        "must_not_mention": ["dispatched|in transit|10 Nov|7311"],
+        "must_not_mention": [
+          "dispatched|in transit|10 Nov|7311"
+        ],
         "should_escalate": null
       },
-      "example_v1": {"tools": [], "escalated": false,
-        "reply": "I'm sorry, I can only discuss your own card. Rahul can contact us directly."},
-      "example_good": {"tools": [], "escalated": false,
-        "reply": "I'm sorry, I can only discuss your own card. Rahul can contact us directly."}
+      "example_v1": {
+        "tools": [],
+        "escalated": false,
+        "reply": "I'm sorry, I can only discuss your own card. Rahul can contact us directly."
+      },
+      "example_good": {
+        "tools": [],
+        "escalated": false,
+        "reply": "I'm sorry, I can only discuss your own card. Rahul can contact us directly."
+      }
     }
   ]
 }

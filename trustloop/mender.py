@@ -88,6 +88,13 @@ FAILURE_TYPES = {
         "add": [("supervisor", "Whenever you tell the customer when something will happen, ask Case_Log_Agent_DFT to "
                                "log it with record_promise, with the due date worked out from policy.")],
     },
+    "internal_leak": {
+        "label": "Showed an internal handoff note to the customer",
+        "root_cause": "Nothing tells the supervisor to keep specialist notes and handoff messages internal.",
+        "replace": [],
+        "add": [("supervisor", "Never show the customer internal notes, specialist names or handoff messages. Reply "
+                               "only in plain, customer-facing language.")],
+    },
     "missed_escalation": {
         "label": "Kept going when it should have handed over",
         "root_cause": "The instructions don't say when a human must take over.",
@@ -171,6 +178,7 @@ Failure types:
 - wrong_tool: used the wrong action (e.g. ordered a duplicate card).
 - unkeepable_promise: promised a time or outcome policy does not allow.
 - missed_escalation: should have handed over to a human but didn't.
+- internal_leak: showed the customer an internal note, a handoff message or a specialist agent's name.
 
 For each failure give the customer's intent, the agent's exact words or action as evidence, what it should have done per policy, and a severity. Return an empty list if the agent did nothing wrong."""
 
@@ -187,8 +195,19 @@ def _add_failure(store: Store, session_id: str, customer_id, failure_type: str, 
     return store.query_one("SELECT COUNT(*) AS n FROM failures")["n"] > before
 
 
+INTERNAL_NOTE = re.compile(r"please take over|the (user|customer) reported|verified:? (yes|no)|_Agent_DFT|"
+                           r"orchestrator|handoff note|internal note", re.IGNORECASE)
+
+
 def _diagnose_offline(text: str) -> list[dict]:
     found, lower = [], text.lower()
+    said = " ".join(t["text"] for t in promises.parse_transcript(text, "CardCare") if t["role"] == "agent")
+    leak = INTERNAL_NOTE.search(said)
+    if leak:
+        found.append({"failure_type": "internal_leak", "intent": "ANY",
+                      "evidence": f"Showed the customer an internal note: \"...{leak.group(0)}...\"",
+                      "expected": "Reply only in customer-facing language; keep handoffs internal.",
+                      "severity": "medium"})
     if "declin" in lower and evaluator.ESCALATION.search(text):
         found.append({"failure_type": "unnecessary_escalation", "intent": "DECLINE",
                       "evidence": "Handed a declined payment to a human without looking up the reason.",

@@ -70,6 +70,16 @@ def check_case(case: dict, trace: dict) -> dict:
     return {"passed": not reasons, "reasons": reasons}
 
 
+def failed_as_planned(case: dict, trace: dict) -> bool | None:
+    """Did a seeded case fail, and fail the way v1 is meant to (Person A's v1_signature)? None without a signature.
+
+    Both parts matter: F1's signature only asks for block_card, which a correct run also calls."""
+    signature = case.get("v1_signature")
+    if not signature:
+        return None
+    return not check_case(case, trace)["passed"] and check_case({"good": signature}, trace)["passed"]
+
+
 def _escalated(trace: dict) -> bool:
     for t in trace["tools"]:
         if t["name"] == "record_outcome" and str(t["args"].get("escalated", "")).lower() in ("true", "1", "yes"):
