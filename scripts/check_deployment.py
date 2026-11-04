@@ -19,8 +19,8 @@ async def check_mcp(name, connect):
             async with ClientSession(streams[0], streams[1]) as session:
                 await session.initialize()
                 tools = [t.name for t in (await session.list_tools()).tools]
-                result = await session.call_tool("get_card_status", {"phone": "+919845001003", "session_id": "deploy-check"})
-                ok = "in_transit" in json.dumps([c.model_dump() for c in result.content])
+                result = await session.call_tool("get_card_status", {"customer_id": "C1002", "session_id": "deploy-check"})
+                ok = "dispatched" in json.dumps([c.model_dump() for c in result.content])
                 print(f"  {name}: {len(tools)} tools, test call {'OK' if ok else 'unexpected result'}")
                 return ok
     except Exception as exc:  # report every failure, keep checking the rest
@@ -40,7 +40,7 @@ def main():
                                lambda: streamablehttp_client(f"{base}/mcp", headers=headers)))
     ok &= asyncio.run(check_mcp("MCP SSE              " + base + "/sse",
                                 lambda: sse_client(f"{base}/sse", headers=headers)))
-    card = httpx.get(f"{base}/api/card", params={"phone": "9845001009"}, headers=headers, timeout=30)
+    card = httpx.get(f"{base}/api/card", params={"phone": "9845011111"}, headers=headers, timeout=30)
     print(f"  agent card API: HTTP {card.status_code}")
     print("ALL GOOD" if ok and card.status_code == 200 else "SOMETHING FAILED - see above")
 
