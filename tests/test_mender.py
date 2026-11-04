@@ -118,6 +118,20 @@ def test_patch_with_unknown_tool_falls_back_to_rules(captured):
     assert patch["source"] == "rules"
 
 
+class NeverCall:
+    name = "gemini"
+
+    def run_agent(self, **kwargs):
+        raise AssertionError("evaluation must not call the model unless asked")
+
+
+def test_evaluation_uses_no_model_calls_by_default(captured):
+    mender.build_cases(captured)
+    patch = mender.propose_patch(captured, None)
+    report = mender.evaluate_patch(captured, NeverCall(), patch["id"])
+    assert report["engine"] == "simulator" and report["gate"]["decision"] == "PASS"
+
+
 def test_check_case_reasons():
     case = {"expect": {"required_tools": ["verify_customer"], "before": {"block_card": "verify_customer"},
                        "must_not_mention": ["2 days"], "should_escalate": False}}

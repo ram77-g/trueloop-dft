@@ -22,6 +22,19 @@ def test_server_call_tool_round_trip(store):
     assert "Meera Nair" in text
 
 
+def test_talkdesk_style_string_arguments(store):
+    """Talkdesk passes every tool parameter as a string, booleans as 'true'/'false'."""
+    server = mcp_tools.build_mcp()
+    asyncio.run(server.call_tool("set_international_usage",
+                                 {"phone": "+919845001004", "enabled": "true", "days": "30", "session_id": "td-1"}))
+    asyncio.run(server.call_tool("record_outcome", {"intent": "card_declined", "resolved": "false",
+                                                     "escalated": "true", "phone": "+919845001002",
+                                                     "session_id": "td-2"}))
+    card = store.query_one("SELECT international FROM cards WHERE customer_id = 'C004'")
+    outcome = store.query_one("SELECT resolved, escalated FROM outcomes WHERE session_id = 'td-2'")
+    assert card["international"] == 1 and (outcome["resolved"], outcome["escalated"]) == (0, 1)
+
+
 def test_calls_are_logged_per_session(store):
     mcp_tools.verify_customer("+919845001005", "6604", "1995-05-09", session_id="s-42")
     mcp_tools.block_card("+919845001005", "stolen", session_id="s-42")

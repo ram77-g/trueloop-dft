@@ -126,7 +126,7 @@ class GeminiLLM:
                 log.info("Gemini models, in order of preference: %s", self._candidates)
             return list(self._candidates)
 
-    def _probe(self, ordered: list[str], limit: int = 6) -> list[str]:
+    def _probe(self, ordered: list[str], limit: int = 2) -> list[str]:
         """Put the first model that answers a tiny request at the front, so real work doesn't wait on outages."""
         config = self.types.GenerateContentConfig(
             max_output_tokens=16, automatic_function_calling=self.types.AutomaticFunctionCallingConfig(disable=True))

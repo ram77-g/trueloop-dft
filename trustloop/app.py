@@ -296,9 +296,10 @@ def create_app(settings: Settings | None = None, store: db.Store | None = None) 
         return row
 
     @app.post("/api/mender/patches/{patch_id}/evaluate")
-    def evaluate(patch_id: int):
+    def evaluate(patch_id: int, engine: str = "simulator"):
+        """engine=simulator (default, no model calls) or engine=llm (about 100 model calls)."""
         try:
-            return mender.evaluate_patch(store, llm, patch_id)
+            return mender.evaluate_patch(store, llm, patch_id, use_llm=engine == "llm")
         except ValueError as exc:
             raise HTTPException(404, str(exc)) from exc
 

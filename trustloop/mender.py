@@ -412,7 +412,11 @@ def gate_decision(cases: list[dict], before: dict[str, bool], after: dict[str, b
             "score_before": score_before, "score_after": score_after}
 
 
-def evaluate_patch(store: Store, llm: LLM | None, patch_id: int) -> dict:
+def evaluate_patch(store: Store, llm: LLM | None, patch_id: int, use_llm: bool = False) -> dict:
+    """Run every case on the old and new instructions. Uses the simulator unless use_llm is set: a live
+    run costs roughly 100 model calls."""
+    if not use_llm:
+        llm = None
     patch = get_patch(store, patch_id)
     if not patch:
         raise ValueError(f"No patch {patch_id}")
